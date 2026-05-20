@@ -1,6 +1,6 @@
 {
   "name": "collect-test-cases",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Scan Playwright/Vitest/Jest spec files and generate a single Markdown README per app, with optional screenshot galleries and an i18n plugin.",
   "keywords": [
     "playwright",
@@ -55,6 +55,9 @@
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "pnpm run build && pnpm test"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

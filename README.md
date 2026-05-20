@@ -23,16 +23,16 @@ Zero runtime dependencies. Output is plain Markdown — render it on GitHub, in 
 ## Installation
 
 ```bash
-npm install -D collect-test-cases
+npm install -D collect-test-cases typescript
 ```
 
 or with pnpm:
 
 ```bash
-pnpm add -D collect-test-cases
+pnpm add -D collect-test-cases typescript
 ```
 
-Requires Node.js ≥ 22 (uses `node:fs` `globSync`).
+Requires Node.js ≥ 22 (uses `node:fs` `globSync`) and TypeScript ≥ 5 (peer-dependency — the spec parser walks the TypeScript AST so titles, modifiers, and nested `test.step()` calls are recognised reliably even when bodies contain braces in strings, comments that look like tests, dynamic titles, or JSX).
 
 ## Quick start
 

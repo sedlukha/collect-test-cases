@@ -334,6 +334,243 @@ test.skip(
     assert.equal(cases.length, 1)
     assert.equal(cases[0]?.title, "should be skipped")
   })
+
+  test("captures modifier 'skip' on test.skip", () => {
+    const p = writeTmp("mod-skip.spec.ts", "test.skip('a', () => {})")
+    const cases = parseSpecFile(p)
+    assert.equal(cases[0]?.modifier, "skip")
+  })
+
+  test("captures modifier 'only' on test.only", () => {
+    const p = writeTmp("mod-only.spec.ts", "test.only('a', () => {})")
+    const cases = parseSpecFile(p)
+    assert.equal(cases[0]?.modifier, "only")
+  })
+
+  test("captures modifier 'fixme' on it.fixme", () => {
+    const p = writeTmp("mod-fixme.spec.ts", "it.fixme('a', () => {})")
+    const cases = parseSpecFile(p)
+    assert.equal(cases[0]?.modifier, "fixme")
+  })
+
+  test("captures modifier 'fail' on test.fail", () => {
+    const p = writeTmp("mod-fail.spec.ts", "test.fail('a', () => {})")
+    const cases = parseSpecFile(p)
+    assert.equal(cases[0]?.modifier, "fail")
+  })
+
+  test("captures modifier 'slow' on test.slow", () => {
+    const p = writeTmp("mod-slow.spec.ts", "test.slow('a', () => {})")
+    const cases = parseSpecFile(p)
+    assert.equal(cases[0]?.modifier, "slow")
+  })
+
+  test("leaves modifier undefined on plain test()", () => {
+    const p = writeTmp("plain.spec.ts", "test('a', () => {})")
+    const cases = parseSpecFile(p)
+    assert.equal(cases[0]?.modifier, undefined)
+  })
+
+  test("handles tests inside test.describe.skip", () => {
+    const p = writeTmp(
+      "describe-skip-mod.spec.ts",
+      `
+test.describe.skip('Outer', () => {
+  test('inside', () => {})
+})
+`
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.deepEqual(cases[0]?.describes, ["Outer"])
+    assert.equal(cases[0]?.title, "inside")
+  })
+
+  test("extracts no-substitution template literal as title", () => {
+    const p = writeTmp("nostmpl.spec.ts", "test(`fixed title`, () => {})")
+    const cases = parseSpecFile(p)
+    assert.equal(cases[0]?.title, "fixed title")
+  })
+
+  test("extracts template literal with substitution as title", () => {
+    const p = writeTmp(
+      "tmpl.spec.ts",
+      "const name = 'world'\ntest(`hello ${name} world`, () => {})"
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases[0]?.title, "hello ${name} world")
+  })
+
+  test("falls back to source text for non-string dynamic title", () => {
+    const p = writeTmp(
+      "dyn.spec.ts",
+      "declare const makeTitle: (s: string) => string\ntest(makeTitle('foo'), () => {})"
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.title, "makeTitle('foo')")
+  })
+
+  test("ignores test() calls inside line comments", () => {
+    const p = writeTmp(
+      "linecomment.spec.ts",
+      `
+// test('fake', () => {})
+// test.only('also fake', () => {})
+test('real', () => {})
+`
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.title, "real")
+  })
+
+  test("ignores test() calls inside block comments", () => {
+    const p = writeTmp(
+      "blockcomment.spec.ts",
+      `
+/*
+test('fake', () => {})
+test.only('also fake', () => {})
+*/
+test('real', () => {})
+`
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.title, "real")
+  })
+
+  test("handles braces in string-literal titles", () => {
+    const p = writeTmp(
+      "braces-title.spec.ts",
+      `
+test('renders {placeholder} correctly', () => {})
+test('next one', () => {})
+`
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 2)
+    assert.equal(cases[0]?.title, "renders {placeholder} correctly")
+    assert.equal(cases[1]?.title, "next one")
+  })
+
+  test("tracks describe stack across test bodies that contain inline braces", () => {
+    const p = writeTmp(
+      "body-braces.spec.ts",
+      `
+test.describe('Group', () => {
+  test('first', () => {
+    const x = { a: 1 }
+    expect('}{').toBe('}{')
+  })
+  test('second', () => {})
+})
+`
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 2)
+    assert.deepEqual(cases[0]?.describes, ["Group"])
+    assert.deepEqual(cases[1]?.describes, ["Group"])
+  })
+
+  test("captures nested test.step calls flat", () => {
+    const p = writeTmp(
+      "nested-steps.spec.ts",
+      `
+test('foo', async () => {
+  await test.step('outer', async () => {
+    await test.step('inner', async () => {})
+  })
+})
+`
+    )
+    const cases = parseSpecFile(p)
+    assert.deepEqual(cases[0]?.steps, ["outer", "inner"])
+  })
+
+  test("captures test cases generated inside forEach loops", () => {
+    const p = writeTmp(
+      "loop.spec.ts",
+      "[1, 2, 3].forEach((n) => {\n  test(`case ${n}`, () => {})\n})"
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.title, "case ${n}")
+  })
+
+  test("handles test() with only a title (no callback)", () => {
+    const p = writeTmp("title-only.spec.ts", "test('todo')")
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.title, "todo")
+    assert.deepEqual(cases[0]?.steps, [])
+  })
+
+  test("preserves unicode and emoji in titles", () => {
+    const p = writeTmp(
+      "unicode.spec.ts",
+      "test('emoji 🎉 works', () => {})\ntest('кириллица', () => {})"
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases[0]?.title, "emoji 🎉 works")
+    assert.equal(cases[1]?.title, "кириллица")
+  })
+
+  test("parses plain .spec.js files", () => {
+    const p = writeTmp("plain.spec.js", "test('js test', () => {})")
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.title, "js test")
+  })
+
+  test("parses .tsx spec files with JSX in test bodies", () => {
+    const p = writeTmp(
+      "comp.spec.tsx",
+      `
+declare const Button: (p: { onClick: () => void; children: unknown }) => unknown
+test('renders component', () => {
+  const el = <Button onClick={() => {}}>Click</Button>
+  void el
+})
+`
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.title, "renders component")
+  })
+
+  test("does not classify test.use / test.extend / hooks as test cases", () => {
+    const p = writeTmp(
+      "non-test-members.spec.ts",
+      `
+test.use({ locale: 'en' })
+test.extend({})
+test.beforeEach(() => {})
+test.afterEach(() => {})
+test.beforeAll(() => {})
+test.afterAll(() => {})
+test('only this one is real', () => {})
+`
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.title, "only this one is real")
+  })
+
+  test("ignores property-access calls whose root isn't test/it/describe", () => {
+    const p = writeTmp(
+      "non-root.spec.ts",
+      `
+const obj = { test: () => {} }
+obj.test('not a real test')
+test('real one', () => {})
+`
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.title, "real one")
+  })
 })
 
 describe("layout-derived resolvers", () => {
