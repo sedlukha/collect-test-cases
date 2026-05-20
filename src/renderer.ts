@@ -9,6 +9,35 @@ import type { CollectTestCasesPlugin } from "./plugin.js"
 // Inner map type of GroupedSpecs: domain → category → pageName → TestCase[]
 export type AppDomains = Map<string, Map<string, Map<string, TestCase[]>>>
 
+// Icon prefix for a test summary line. The default ☑️ stands for a plain
+// `test()`/`it()` (think "ok / will run"); modifiers map to icons that
+// match how the test runner treats them:
+//
+//   skip   → ⏭️  (excluded from the run)
+//   only   → 🎯  (the only test that will run when present)
+//   fixme  → 🚧  (known broken / work in progress)
+//   fail   → ⚠️  (declared `test.fail` — expected to fail)
+//   slow   → 🐌  (`test.slow` — extended timeout)
+//
+// Visual signal is more useful than a uniform ☑️ — it would otherwise hide
+// the fact that some tests aren't actually exercised.
+const iconForModifier = (modifier: TestCase["modifier"]): string => {
+  switch (modifier) {
+    case "fail":
+      return "⚠️"
+    case "fixme":
+      return "🚧"
+    case "only":
+      return "🎯"
+    case "skip":
+      return "⏭️"
+    case "slow":
+      return "🐌"
+    default:
+      return "☑️"
+  }
+}
+
 const toRelLink = (
   specPathFromRoot: string,
   root: string,
@@ -120,7 +149,9 @@ const renderDescribeLevel = (
 
   for (const tc of directCases) {
     lines.push("<details>")
-    lines.push(`<summary>☑️ ${resolve(tc.title)}</summary>`)
+    lines.push(
+      `<summary>${iconForModifier(tc.modifier)} ${resolve(tc.title)}</summary>`
+    )
     lines.push("")
 
     if (tc.steps.length > 0) {

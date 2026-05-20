@@ -193,6 +193,21 @@ Before:  await expect(page.getByText(t('button.submit'))).toBeVisible()
 After:   await expect(page.getByText(**en: "Submit" · ru: "Отправить"**)).toBeVisible()
 ```
 
+## Test status icons
+
+Each test case is rendered with a leading icon that reflects the modifier the call carried at the source. The icon makes skipped and work-in-progress tests visually distinct so the generated README doesn't pretend everything runs.
+
+| Source             | Icon | Meaning                                     |
+| ------------------ | ---- | ------------------------------------------- |
+| `test('foo', …)`   | ☑️    | Plain test — will run.                      |
+| `test.skip(…)`     | ⏭️    | Excluded from the run.                      |
+| `test.only(…)`     | 🎯   | Focus mode — others are skipped when present. |
+| `test.fixme(…)`    | 🚧   | Known broken / work in progress.            |
+| `test.fail(…)`     | ⚠️    | Declared `test.fail` — expected to fail.    |
+| `test.slow(…)`     | 🐌   | Extended timeout via `test.slow`.           |
+
+Modifiers are also surfaced on the `TestCase.modifier` field for any custom rendering you build on top of the library exports.
+
 ## How grouping works
 
 Each config produces one README. Within that README the renderer groups specs as **domain → category → pageName → TestCase[]**.

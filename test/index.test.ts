@@ -1382,6 +1382,79 @@ describe("generateAppMarkdown", () => {
     assert.doesNotMatch(md, /\*\*\(\d+ tests\)\*\*/)
   })
 
+  const oneCaseDomain = (
+    title: string,
+    modifier?: "fail" | "fixme" | "only" | "skip" | "slow"
+  ): AppDomains => {
+    const tc = {
+      describes: [],
+      pageName: "page",
+      specPath: "apps/myapp/__checks__/page.spec.ts",
+      specType: "default",
+      steps: [],
+      title,
+      ...(modifier ? { modifier } : {}),
+    }
+
+    return new Map([["", new Map([["unknown", new Map([["page", [tc]]])]])]])
+  }
+
+  test("default icon ☑️ is used when no modifier is set", () => {
+    const md = renderApp("myapp", oneCaseDomain("plain test"))
+    assert.ok(md.includes("<summary>☑️ plain test</summary>"))
+  })
+
+  test("renders ⏭️ icon for skip modifier", () => {
+    const md = renderApp("myapp", oneCaseDomain("skipped test", "skip"))
+    assert.ok(md.includes("<summary>⏭️ skipped test</summary>"))
+    assert.ok(!md.includes("<summary>☑️ skipped test</summary>"))
+  })
+
+  test("renders 🎯 icon for only modifier", () => {
+    const md = renderApp("myapp", oneCaseDomain("focused test", "only"))
+    assert.ok(md.includes("<summary>🎯 focused test</summary>"))
+  })
+
+  test("renders 🚧 icon for fixme modifier", () => {
+    const md = renderApp("myapp", oneCaseDomain("broken test", "fixme"))
+    assert.ok(md.includes("<summary>🚧 broken test</summary>"))
+  })
+
+  test("renders ⚠️ icon for fail modifier", () => {
+    const md = renderApp("myapp", oneCaseDomain("expected to fail", "fail"))
+    assert.ok(md.includes("<summary>⚠️ expected to fail</summary>"))
+  })
+
+  test("renders 🐌 icon for slow modifier", () => {
+    const md = renderApp("myapp", oneCaseDomain("slow test", "slow"))
+    assert.ok(md.includes("<summary>🐌 slow test</summary>"))
+  })
+
+  test("mixes icons per test in one page", () => {
+    const cases = [
+      { title: "a", modifier: undefined },
+      { title: "b", modifier: "skip" as const },
+      { title: "c", modifier: "only" as const },
+    ].map((x) => ({
+      describes: [],
+      pageName: "page",
+      specPath: "apps/myapp/__checks__/page.spec.ts",
+      specType: "default",
+      steps: [],
+      title: x.title,
+      ...(x.modifier ? { modifier: x.modifier } : {}),
+    }))
+
+    const domains: AppDomains = new Map([
+      ["", new Map([["unknown", new Map([["page", cases]])]])],
+    ])
+
+    const md = renderApp("myapp", domains)
+    assert.ok(md.includes("<summary>☑️ a</summary>"))
+    assert.ok(md.includes("<summary>⏭️ b</summary>"))
+    assert.ok(md.includes("<summary>🎯 c</summary>"))
+  })
+
   test("renders steps with blockquote prefix", () => {
     const domains: AppDomains = new Map([
       [
