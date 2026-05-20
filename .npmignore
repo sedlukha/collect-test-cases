@@ -2,6 +2,7 @@ src
 test
 tests
 scripts
+examples
 tsconfig.json
 tsconfig.build.json
 .gitignore

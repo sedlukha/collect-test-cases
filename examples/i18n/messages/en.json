@@ -1,0 +1,17 @@
+{
+  "page": {
+    "title": "Sign in"
+  },
+  "button": {
+    "submit": "Submit",
+    "cancel": "Cancel"
+  },
+  "field": {
+    "email": "Email",
+    "password": "Password"
+  },
+  "validation": {
+    "maxLength": "{fieldName} must be {max} characters or less",
+    "required": "{fieldName} is required"
+  }
+}

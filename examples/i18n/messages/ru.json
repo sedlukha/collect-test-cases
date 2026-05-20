@@ -1,0 +1,17 @@
+{
+  "page": {
+    "title": "Войти"
+  },
+  "button": {
+    "submit": "Отправить",
+    "cancel": "Отмена"
+  },
+  "field": {
+    "email": "Электронная почта",
+    "password": "Пароль"
+  },
+  "validation": {
+    "maxLength": "{fieldName} должно содержать не более {max} символов",
+    "required": "{fieldName} обязательно"
+  }
+}

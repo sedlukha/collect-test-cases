@@ -54,6 +54,7 @@
     "start": "node dist/cli/index.js",
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
+    "regen-examples": "node scripts/regen-examples.mjs",
     "prepublishOnly": "pnpm run build && pnpm test"
   },
   "peerDependencies": {
