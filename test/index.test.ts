@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, test } from "node:test"
@@ -769,6 +769,39 @@ describe("collectSpecFiles", () => {
     })
     const found = collectSpecFiles(resolved)
     assert.deepEqual(found, [join(tmpDir, "tests/login.e2e.ts")])
+  })
+
+  test("playwright discovery lists specs from `playwright test --list`", () => {
+    const rel = "node_modules/@scope/pkg/src/route/e2e/__checks__"
+    const specA = join(tmpDir, rel, "a.guest.spec.ts")
+    const specB = join(tmpDir, rel, "a.screenshot.spec.ts")
+    const listJson = {
+      config: { rootDir: tmpDir },
+      suites: [
+        {
+          file: `${rel}/a.guest.spec.ts`,
+          specs: [{ file: `${rel}/a.guest.spec.ts` }],
+        },
+        { file: `${rel}/a.screenshot.spec.ts` },
+      ],
+    }
+    // A fake `playwright` CLI: prints noise then the --list JSON, so the test
+    // also covers stripping non-JSON output before the document.
+    const fakeCli = join(tmpDir, "fake-playwright.mjs")
+    writeFileSync(
+      fakeCli,
+      `#!/usr/bin/env node\nconsole.log("notice before json")\nconsole.log(${JSON.stringify(
+        JSON.stringify(listJson)
+      )})\n`
+    )
+    chmodSync(fakeCli, 0o755)
+
+    const resolved = applyConfigDefaults({
+      playwright: { command: fakeCli },
+      rootDir: tmpDir,
+    })
+    const found = collectSpecFiles(resolved)
+    assert.deepEqual(found, [specA, specB].sort())
   })
 
   test("specType.pattern accepts RegExp", () => {

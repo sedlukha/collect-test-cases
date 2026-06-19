@@ -59,6 +59,11 @@ export interface SpecTypeDefinition {
   pattern?: RegExp | string
 }
 
+export interface PlaywrightDiscovery {
+  command?: string
+  configPath?: string
+}
+
 export interface CollectTestCasesConfig {
   // App name shown in the generated README heading and used by the
   // grouper. When omitted, the directory containing the config file
@@ -86,6 +91,15 @@ export interface CollectTestCasesConfig {
   // directory (or absolute).
   // @default './README.md'
   outputPath?: string
+
+  // Discover spec files by asking Playwright (`playwright test --list`)
+  // instead of globbing the repo tree. Use this when the specs a config runs
+  // live outside the repo — e.g. shared specs shipped by a dependency and
+  // reached through a runner's `testDir`, which a plain glob can't see.
+  // Playwright resolves the config's `testDir`, so the list is exactly what
+  // that config runs. When set, `scanDirs`/`include`/`exclude` and `resolveApp`
+  // are ignored (the list is already scoped to this config).
+  playwright?: PlaywrightDiscovery
 
   // Plugins extend the renderer. See `CollectTestCasesPlugin` for the hook list.
   plugins?: CollectTestCasesPlugin[]
@@ -129,6 +143,7 @@ export interface ResolvedConfig {
   exclude: string[]
   include: string[]
   outputPath: string
+  playwright: PlaywrightDiscovery | undefined
   plugins: CollectTestCasesPlugin[]
   resolveApp: ResolveApp | undefined
   resolveCategory: ResolveCategory | undefined
@@ -186,6 +201,7 @@ export const applyConfigDefaults = (
     exclude: user?.exclude ?? [...DEFAULT_EXCLUDE],
     include: user?.include ?? [...DEFAULT_INCLUDE],
     outputPath,
+    playwright: user?.playwright,
     plugins: user?.plugins ?? [],
     resolveApp: user?.resolveApp ?? layoutResolvers?.resolveApp,
     resolveCategory: user?.resolveCategory ?? layoutResolvers?.resolveCategory,

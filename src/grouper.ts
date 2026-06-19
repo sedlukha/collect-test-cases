@@ -1,9 +1,78 @@
+import { spawnSync } from "node:child_process"
 import { globSync } from "node:fs"
 import { basename, isAbsolute, relative, resolve } from "node:path"
 
-import type { ResolvedConfig, SpecTypeDefinition } from "./config.js"
+import type {
+  PlaywrightDiscovery,
+  ResolvedConfig,
+  SpecTypeDefinition,
+} from "./config.js"
 import type { TestCase } from "./parser.js"
 import { parseSpecFile } from "./parser.js"
+
+// Minimal shape of `playwright test --list --reporter=json` output.
+interface PlaywrightListSuite {
+  file?: string
+  specs?: { file?: string }[]
+  suites?: PlaywrightListSuite[]
+}
+interface PlaywrightListJson {
+  config?: { rootDir?: string }
+  suites?: PlaywrightListSuite[]
+}
+
+// Ask Playwright which spec files a config runs. Unlike a glob, this resolves
+// the config's `testDir`, so specs shipped by a dependency (reached through the
+// runner's `testDir`, e.g. under node_modules) are included.
+const collectViaPlaywright = (pw: PlaywrightDiscovery): string[] => {
+  const args = ["test", "--list", "--reporter=json"]
+
+  if (pw.configPath) {
+    args.push("--config", pw.configPath)
+  }
+
+  const result = spawnSync(pw.command ?? "playwright", args, {
+    encoding: "utf-8",
+    maxBuffer: 64 * 1024 * 1024,
+  })
+
+  const stdout = result.stdout ?? ""
+  // Playwright may print notices before the JSON document; start at the first
+  // `{` so JSON.parse gets a clean payload.
+  const jsonStart = stdout.indexOf("{")
+
+  if (jsonStart === -1) {
+    throw new Error(
+      `[collect-test-cases] '${pw.command ?? "playwright"} test --list' produced no JSON.\n${result.stderr ?? result.error ?? ""}`
+    )
+  }
+
+  const json = JSON.parse(stdout.slice(jsonStart)) as PlaywrightListJson
+  const root = json.config?.rootDir ?? process.cwd()
+  const files = new Set<string>()
+
+  const walk = (suite: PlaywrightListSuite): void => {
+    if (suite.file) {
+      files.add(resolve(root, suite.file))
+    }
+
+    for (const spec of suite.specs ?? []) {
+      if (spec.file) {
+        files.add(resolve(root, spec.file))
+      }
+    }
+
+    for (const sub of suite.suites ?? []) {
+      walk(sub)
+    }
+  }
+
+  for (const suite of json.suites ?? []) {
+    walk(suite)
+  }
+
+  return [...files].sort()
+}
 
 // domain → category → pageName → TestCase[]
 // - `domain` is '' when `resolveDomain` is not configured (or returns '')
@@ -36,6 +105,10 @@ const extractSpecType = (
 }
 
 export const collectSpecFiles = (config: ResolvedConfig): string[] => {
+  if (config.playwright) {
+    return collectViaPlaywright(config.playwright)
+  }
+
   const all = new Set<string>()
 
   for (const dir of config.scanDirs) {
@@ -63,7 +136,12 @@ export const groupSpecs = (
   const root = config.rootDir
 
   for (const absPath of specFiles) {
-    const filter = config.resolveApp?.(absPath, root)
+    // In Playwright-discovery mode the list is already scoped to this config,
+    // so skip app filtering (the specs live outside the repo and would fail a
+    // path-based resolveApp).
+    const filter = config.playwright
+      ? undefined
+      : config.resolveApp?.(absPath, root)
 
     if (filter === null) {
       continue
