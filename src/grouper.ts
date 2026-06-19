@@ -37,17 +37,32 @@ const collectViaPlaywright = (pw: PlaywrightDiscovery): string[] => {
   })
 
   const stdout = result.stdout ?? ""
-  // Playwright may print notices before the JSON document; start at the first
-  // `{` so JSON.parse gets a clean payload.
-  const jsonStart = stdout.indexOf("{")
+  // Notices may precede the JSON document, and some of them contain `{` that is
+  // NOT valid JSON — e.g. dotenv prints JS object literals like
+  // `{ quiet: true }`. So try parsing from each `{` and take the first that
+  // yields a valid document (the report is the last/only valid JSON, so the few
+  // invalid candidates before it fail fast).
+  let json: PlaywrightListJson | undefined
 
-  if (jsonStart === -1) {
+  for (
+    let at = stdout.indexOf("{");
+    at !== -1;
+    at = stdout.indexOf("{", at + 1)
+  ) {
+    try {
+      json = JSON.parse(stdout.slice(at)) as PlaywrightListJson
+      break
+    } catch {
+      // Not the JSON document — keep looking.
+    }
+  }
+
+  if (!json) {
     throw new Error(
-      `[collect-test-cases] '${pw.command ?? "playwright"} test --list' produced no JSON.\n${result.stderr ?? result.error ?? ""}`
+      `[collect-test-cases] '${pw.command ?? "playwright"} test --list' produced no parseable JSON.\n${result.stderr ?? result.error ?? ""}`
     )
   }
 
-  const json = JSON.parse(stdout.slice(jsonStart)) as PlaywrightListJson
   const root = json.config?.rootDir ?? process.cwd()
   const files = new Set<string>()
 

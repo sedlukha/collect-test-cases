@@ -785,12 +785,13 @@ describe("collectSpecFiles", () => {
         { file: `${rel}/a.screenshot.spec.ts` },
       ],
     }
-    // A fake `playwright` CLI: prints noise then the --list JSON, so the test
-    // also covers stripping non-JSON output before the document.
+    // A fake `playwright` CLI: prints noise — including an invalid-JSON object
+    // literal with a `{` (like dotenv's `{ quiet: true }`) — then the --list
+    // JSON, so the test covers skipping non-JSON `{` candidates before it.
     const fakeCli = join(tmpDir, "fake-playwright.mjs")
     writeFileSync(
       fakeCli,
-      `#!/usr/bin/env node\nconsole.log("notice before json")\nconsole.log(${JSON.stringify(
+      `#!/usr/bin/env node\nconsole.log("[dotenv] injecting env")\nconsole.log("{ quiet: true }")\nconsole.log(${JSON.stringify(
         JSON.stringify(listJson)
       )})\n`
     )
