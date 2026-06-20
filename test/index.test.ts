@@ -1,5 +1,11 @@
 import assert from "node:assert/strict"
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  mkdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, test } from "node:test"
@@ -803,6 +809,57 @@ describe("collectSpecFiles", () => {
     })
     const found = collectSpecFiles(resolved)
     assert.deepEqual(found, [specA, specB].sort())
+  })
+
+  test("playwright discovery dedups one spec listed under symlink + realpath", () => {
+    // Mimic pnpm: the real spec lives in a store dir; a package's node_modules
+    // is a symlink to it. Playwright lists the same file under BOTH paths.
+    const storeRel = "node_modules/.pnpm/@scope+pkg@1.0.0/node_modules/@scope/pkg"
+    const storeDir = join(tmpDir, storeRel, "src/route/e2e/__checks__")
+    mkdirSync(storeDir, { recursive: true })
+    const realSpec = join(storeDir, "a.guest.spec.ts")
+    writeFileSync(realSpec, "test('one', () => {})\ntest('two', () => {})")
+
+    // <pkg>/node_modules/@scope/pkg -> the store package dir (symlink).
+    const linkParent = join(tmpDir, "pkg/node_modules/@scope")
+    mkdirSync(linkParent, { recursive: true })
+    symlinkSync(join(tmpDir, storeRel), join(linkParent, "pkg"))
+
+    const symlinkRel =
+      "pkg/node_modules/@scope/pkg/src/route/e2e/__checks__/a.guest.spec.ts"
+    const storeSpecRel = `${storeRel}/src/route/e2e/__checks__/a.guest.spec.ts`
+    const listJson = {
+      config: { rootDir: tmpDir },
+      // The runner's testDir reaches the spec through the symlink; another
+      // project reports the same file via its pnpm-store realpath.
+      suites: [
+        { file: symlinkRel, specs: [{ file: symlinkRel }] },
+        { file: storeSpecRel, specs: [{ file: storeSpecRel }] },
+      ],
+    }
+    const fakeCli = join(tmpDir, "fake-playwright.mjs")
+    writeFileSync(
+      fakeCli,
+      `#!/usr/bin/env node\nconsole.log(${JSON.stringify(JSON.stringify(listJson))})\n`
+    )
+    chmodSync(fakeCli, 0o755)
+
+    const resolved = applyConfigDefaults({
+      playwright: { command: fakeCli },
+      rootDir: tmpDir,
+    })
+
+    // Collapses to ONE file, and keeps the readable symlink path (not .pnpm).
+    const found = collectSpecFiles(resolved)
+    assert.deepEqual(found, [join(tmpDir, symlinkRel)])
+
+    // And the case count is not doubled: 2 real test()s, not 4.
+    const grouped = groupSpecs(found, resolved)
+    const cases = [...grouped.values()]
+      .flatMap((c) => [...c.values()])
+      .flatMap((p) => [...p.values()])
+      .flat()
+    assert.equal(cases.length, 2)
   })
 
   test("specType.pattern accepts RegExp", () => {

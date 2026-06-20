@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process"
-import { globSync } from "node:fs"
-import { basename, isAbsolute, relative, resolve } from "node:path"
+import { globSync, realpathSync } from "node:fs"
+import { basename, isAbsolute, relative, resolve, sep } from "node:path"
 
 import type {
   PlaywrightDiscovery,
@@ -64,16 +64,37 @@ const collectViaPlaywright = (pw: PlaywrightDiscovery): string[] => {
   }
 
   const root = json.config?.rootDir ?? process.cwd()
-  const files = new Set<string>()
+  // Playwright lists the SAME physical spec under more than one path: the
+  // runner's `testDir` symlink (e.g. <pkg>/node_modules/@scope/x/...) AND the
+  // realpath inside the pnpm store (node_modules/.pnpm/<hash>/...). Both point
+  // at one file, so counting both double-counts every shared spec. Key the map
+  // by the canonical realpath to collapse the variants, but keep the most
+  // readable path for display (prefer the symlink over the noisy .pnpm realpath).
+  const byCanonical = new Map<string, string>()
+
+  const add = (file: string): void => {
+    const abs = resolve(root, file)
+    let canonical: string
+    try {
+      canonical = realpathSync(abs)
+    } catch {
+      // Not a real path on disk (e.g. a test fixture) — dedup by the resolved
+      // path itself.
+      canonical = abs
+    }
+
+    const prev = byCanonical.get(canonical)
+    byCanonical.set(canonical, prev ? prettierPath(prev, abs) : abs)
+  }
 
   const walk = (suite: PlaywrightListSuite): void => {
     if (suite.file) {
-      files.add(resolve(root, suite.file))
+      add(suite.file)
     }
 
     for (const spec of suite.specs ?? []) {
       if (spec.file) {
-        files.add(resolve(root, spec.file))
+        add(spec.file)
       }
     }
 
@@ -86,7 +107,20 @@ const collectViaPlaywright = (pw: PlaywrightDiscovery): string[] => {
     walk(suite)
   }
 
-  return [...files].sort()
+  return [...byCanonical.values()].sort()
+}
+
+// Of two paths to the same file, pick the one nicer to show in the README:
+// avoid the pnpm store (`node_modules/.pnpm/<hash>/...`), else the shorter.
+const prettierPath = (a: string, b: string): string => {
+  const aStore = a.includes(`${sep}.pnpm${sep}`)
+  const bStore = b.includes(`${sep}.pnpm${sep}`)
+
+  if (aStore !== bStore) {
+    return aStore ? b : a
+  }
+
+  return a.length <= b.length ? a : b
 }
 
 // domain → category → pageName → TestCase[]
