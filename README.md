@@ -220,10 +220,27 @@ export default config
 | Adapter                 | Command it runs                              | Notes                                                                 |
 | ----------------------- | -------------------------------------------- | --------------------------------------------------------------------- |
 | `vitestDiscovery()`     | `vitest list --json`                         | Returns `[{ name, file }]`. Use `--json`, **not** `--reporter=json`.  |
-| `jestDiscovery()`       | `jest --json`                                | Parses the standard `assertionResults` shape; maps `pending`/`todo` statuses to icons. |
+| `jestDiscovery()`       | `jest --collectTests --json` (default)       | Collection-only — never runs test bodies. Requires **Jest ≥ 30**. See [Jest modes](#jest-modes). |
 | `playwrightDiscovery()` | `playwright test --list --reporter=json`     | Reads test titles from the nested-suite JSON.                         |
 
-Each adapter accepts `{ command, args, cwd, configPath }` so you can pin a binary (`command: 'npx'`, `args: ['vitest']`), point at a config (`configPath`), or scope the run.
+Each adapter accepts `{ command, commandArgs, args, cwd, configPath }`:
+
+- **`command`** — the executable (defaults to the runner's own name, resolved on PATH). Pass an absolute path to pin a binary.
+- **`commandArgs`** — arguments inserted **before** the adapter's built-in list args. Use when `command` is a launcher: `{ command: 'npx', commandArgs: ['vitest'] }` builds `npx vitest list --json`.
+- **`args`** — arguments appended **after** the built-in list args (extra runner flags, e.g. `['--project', 'unit']`).
+- **`configPath`** — passed through as `--config <path>`.
+- **`cwd`** — working directory for the spawned process (defaults to the config's `rootDir`).
+
+#### Jest modes
+
+Jest is the one runner that can list tests two ways. `jestDiscovery({ mode })` selects between them:
+
+| Mode                | Command                        | Runs test bodies? | Statuses                          |
+| ------------------- | ------------------------------ | ----------------- | --------------------------------- |
+| `'collect'` (default) | `jest --collectTests --json` | no                | none — every test shows the plain icon |
+| `'run'`             | `jest --json`                  | yes               | real skip / todo icons            |
+
+The default is safe and fast: `--collectTests` (Jest ≥ 30) registers every test without executing any test body or lifecycle hook, so document generation can't trigger side effects or be broken by a failing test. It cannot report real statuses, though — collection marks every test `pending`. Choose `mode: 'run'` when you want accurate skip/todo icons and accept that the whole suite runs. On Jest < 30, use `mode: 'run'`.
 
 **Name splitting.** Runners report a nested test as one flat string joined with `' > '` (e.g. `"outer > inner > title"`). The pipeline splits on `' > '`: the last segment is the title, the earlier ones are describe blocks. This is a deliberate, documented rule — a title that itself contains `' > '` will split wrongly, but no separator is unambiguous, and this is the one the runners emit. (Exported as `NAME_SEPARATOR`.)
 
@@ -247,7 +264,7 @@ The `--json` test list carries only `name` and `file`. So compared with text mod
 | Finds every test               | no        | yes                                 |
 | Helper-created tests           | no        | yes                                 |
 | `it.each` rows                 | no (one entry) | yes, expanded (one entry per row) |
-| skip / todo icons              | yes       | only when the adapter reports a status (Vitest's list does not) |
+| skip / todo icons              | yes       | only when the adapter reports a status — Vitest's list and Jest's default collect mode do not; `jestDiscovery({ mode: 'run' })` does |
 | `test.step` names              | yes       | no                                  |
 | screenshot gallery             | yes       | no                                  |
 | speed                          | instant   | pays the runner's start-up cost     |
