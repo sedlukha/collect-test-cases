@@ -35,6 +35,10 @@
     "./plugins/i18n": {
       "types": "./dist/plugins/i18n/index.d.ts",
       "default": "./dist/plugins/i18n/index.js"
+    },
+    "./plugins/discovery": {
+      "types": "./dist/plugins/discovery/index.d.ts",
+      "default": "./dist/plugins/discovery/index.js"
     }
   },
   "bin": {

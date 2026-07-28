@@ -577,6 +577,154 @@ test('real one', () => {})
     assert.equal(cases.length, 1)
     assert.equal(cases[0]?.title, "real one")
   })
+
+  test("recognises it.each(table)('…') as a test", () => {
+    const p = writeTmp(
+      "each.spec.ts",
+      "it.each([1, 2])('each %s', () => {})"
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.title, "each %s")
+    assert.equal(cases[0]?.modifier, undefined)
+  })
+
+  test("recognises it.for(table)('…') as a test", () => {
+    const p = writeTmp("for.spec.ts", "it.for([1, 2])('for %s', () => {})")
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.title, "for %s")
+  })
+
+  test("recognises a tagged-template it.each`…`('…')", () => {
+    const p = writeTmp(
+      "each-tagged.spec.ts",
+      "it.each`\\n  a\\n  ${1}\\n`('tagged %s', () => {})"
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.title, "tagged %s")
+  })
+
+  test("recognises it.skipIf(x)('…') and it.runIf(x)('…')", () => {
+    const p = writeTmp(
+      "if.spec.ts",
+      `
+it.skipIf(true)('skipIf it', () => {})
+it.runIf(false)('runIf it', () => {})
+`
+    )
+    const cases = parseSpecFile(p)
+    assert.deepEqual(
+      cases.map((c) => c.title),
+      ["skipIf it", "runIf it"]
+    )
+  })
+
+  test("recognises test.extend({})('…') as a test but bare test.extend({}) is not", () => {
+    const p = writeTmp(
+      "extend.spec.ts",
+      `
+test.extend({})
+test.extend({ user: 1 })('extended', () => {})
+`
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.title, "extended")
+  })
+
+  test("captures modifier 'todo' on it.todo", () => {
+    const p = writeTmp("todo.spec.ts", "it.todo('todo it')")
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.title, "todo it")
+    assert.equal(cases[0]?.modifier, "todo")
+  })
+
+  test("treats it.concurrent / it.sequential as plain tests (no modifier)", () => {
+    const p = writeTmp(
+      "concurrent.spec.ts",
+      `
+it.concurrent('concurrent it', () => {})
+it.sequential('sequential it', () => {})
+`
+    )
+    const cases = parseSpecFile(p)
+    assert.deepEqual(
+      cases.map((c) => c.title),
+      ["concurrent it", "sequential it"]
+    )
+    assert.equal(cases[0]?.modifier, undefined)
+    assert.equal(cases[1]?.modifier, undefined)
+  })
+
+  test("recognises describe.each(table)('…') and its child test", () => {
+    const p = writeTmp(
+      "describe-each.spec.ts",
+      `
+describe.each(['a'])('describe.each %s', () => {
+  it('inside describe.each', () => {})
+})
+`
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.deepEqual(cases[0]?.describes, ["describe.each %s"])
+    assert.equal(cases[0]?.title, "inside describe.each")
+  })
+
+  test("carries the modifier through it.skip.each(table)('…')", () => {
+    const p = writeTmp(
+      "skip-each.spec.ts",
+      "it.skip.each([1])('skipped each %s', () => {})"
+    )
+    const cases = parseSpecFile(p)
+    assert.equal(cases.length, 1)
+    assert.equal(cases[0]?.modifier, "skip")
+  })
+
+  test("finds every declaration form from the probe file", () => {
+    const p = writeTmp(
+      "probe.spec.ts",
+      `
+import { describe, it, test } from "vitest"
+
+describe("probe", () => {
+  it("plain it", () => {})
+  it.todo("todo it")
+  it.concurrent("concurrent it", () => {})
+  it.sequential("sequential it", () => {})
+  it.skipIf(true)("skipIf it", () => {})
+  it.each([1, 2])("each %s", () => {})
+  it.for([1, 2])("for %s", () => {})
+  it.skip("skip it", () => {})
+  test.extend({})("extended", () => {})
+})
+
+describe.each(["a"])("describe.each %s", () => {
+  it("inside describe.each", () => {})
+})
+`
+    )
+    const cases = parseSpecFile(p)
+    const titles = cases.map((c) => c.title).sort()
+    assert.deepEqual(titles, [
+      "concurrent it",
+      "each %s",
+      "extended",
+      "for %s",
+      "inside describe.each",
+      "plain it",
+      "sequential it",
+      "skip it",
+      "skipIf it",
+      "todo it",
+    ])
+    // The child of describe.each keeps the block title as its describe.
+    const child = cases.find((c) => c.title === "inside describe.each")
+    assert.deepEqual(child?.describes, ["describe.each %s"])
+  })
 })
 
 describe("layout-derived resolvers", () => {
@@ -902,6 +1050,100 @@ describe("collectSpecFiles", () => {
     })
     const found = collectSpecFiles(resolved)
     assert.deepEqual(found, [join(tmpDir, "src/__checks__/keep.spec.ts")])
+  })
+})
+
+describe("groupSpecs page names & discovery cases", () => {
+  const allCases = (grouped: ReturnType<typeof groupSpecs>) =>
+    [...grouped.values()]
+      .flatMap((c) => [...c.values()])
+      .flatMap((p) => [...p.entries()])
+
+  test("resolvePageName overrides the default single-segment page name", () => {
+    mkdirSync(join(tmpDir, "__tests__/pages/a"), { recursive: true })
+    mkdirSync(join(tmpDir, "__tests__/shared/ui"), { recursive: true })
+    writeFileSync(
+      join(tmpDir, "__tests__/pages/a/x.test.ts"),
+      "test('t1', () => {})"
+    )
+    writeFileSync(
+      join(tmpDir, "__tests__/shared/ui/z.test.ts"),
+      "test('t2', () => {})"
+    )
+
+    const resolved = applyConfigDefaults({
+      include: ["__tests__/**/*.test.ts"],
+      resolvePageName: (absPath, root) => {
+        const rel = absPath.slice(root.length + 1)
+        // Everything after `__tests__/` minus the file name.
+        const parts = rel.split("/")
+        return parts.slice(1, -1).join("/") || null
+      },
+      rootDir: tmpDir,
+      scanDirs: [tmpDir],
+      specsDir: "__tests__",
+    })
+    const grouped = groupSpecs(collectSpecFiles(resolved), resolved)
+    const pageNames = allCases(grouped)
+      .map(([pageName]) => pageName)
+      .sort()
+    assert.deepEqual(pageNames, ["pages/a", "shared/ui"])
+  })
+
+  test("falls back to the specsDir subfolder when resolvePageName returns null", () => {
+    mkdirSync(join(tmpDir, "__checks__/HomePage"), { recursive: true })
+    writeFileSync(
+      join(tmpDir, "__checks__/HomePage/home.spec.ts"),
+      "test('t', () => {})"
+    )
+
+    const resolved = applyConfigDefaults({
+      resolvePageName: () => null,
+      rootDir: tmpDir,
+      scanDirs: [tmpDir],
+    })
+    const grouped = groupSpecs(collectSpecFiles(resolved), resolved)
+    assert.deepEqual(
+      allCases(grouped).map(([pageName]) => pageName),
+      ["HomePage"]
+    )
+  })
+
+  test("groupSpecs uses casesByFile instead of parsing, and skips resolveApp", () => {
+    const abs = join(tmpDir, "__tests__/helper-made.test.ts")
+    mkdirSync(join(tmpDir, "__tests__"), { recursive: true })
+    // File on disk holds NO statically-visible tests (helper-created only).
+    writeFileSync(abs, "makeSuite()")
+
+    const resolved = applyConfigDefaults({
+      // A resolveApp that would exclude everything — discovery must bypass it.
+      resolveApp: () => null,
+      rootDir: tmpDir,
+      scanDirs: [tmpDir],
+      specsDir: "__tests__",
+    })
+    const casesByFile = new Map([
+      [
+        abs,
+        [
+          {
+            describes: ["outer"],
+            pageName: "",
+            specPath: abs,
+            specType: "unknown",
+            steps: [],
+            title: "helper test",
+          },
+        ],
+      ],
+    ])
+    const grouped = groupSpecs([abs], resolved, casesByFile)
+    const entries = allCases(grouped)
+    assert.equal(entries.length, 1)
+    const [, cases] = entries[0] ?? []
+    assert.equal(cases?.length, 1)
+    assert.equal(cases?.[0]?.title, "helper test")
+    assert.deepEqual(cases?.[0]?.describes, ["outer"])
   })
 })
 
@@ -1475,7 +1717,7 @@ describe("generateAppMarkdown", () => {
 
   const oneCaseDomain = (
     title: string,
-    modifier?: "fail" | "fixme" | "only" | "skip" | "slow"
+    modifier?: "fail" | "fixme" | "only" | "skip" | "slow" | "todo"
   ): AppDomains => {
     const tc = {
       describes: [],
@@ -1519,6 +1761,12 @@ describe("generateAppMarkdown", () => {
   test("renders 🐌 icon for slow modifier", () => {
     const md = renderApp("myapp", oneCaseDomain("slow test", "slow"))
     assert.ok(md.includes("<summary>🐌 slow test</summary>"))
+  })
+
+  test("renders 📝 icon for todo modifier", () => {
+    const md = renderApp("myapp", oneCaseDomain("planned test", "todo"))
+    assert.ok(md.includes("<summary>📝 planned test</summary>"))
+    assert.ok(!md.includes("<summary>☑️ planned test</summary>"))
   })
 
   test("mixes icons per test in one page", () => {

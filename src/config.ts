@@ -41,6 +41,19 @@ export type ResolveCategory = (
 // render the category directly.
 export type ResolveDomain = (specAbsPath: string, root: string) => string
 
+// Maps an absolute spec path to a page name (the innermost grouping level —
+// the `<strong>` block that holds a spec's file links and its tests). Return
+// `null` to fall back to the default: the subfolder of `specsDir` that holds
+// the spec, or the spec's file-name stem when it sits directly in `specsDir`.
+//
+// Use this when a deep test tree collapses under the default rule — e.g.
+// `__tests__/pages/a/x.test.ts` and `__tests__/shared/ui/z.test.ts` would both
+// resolve to the single segment after `specsDir` and land in one group.
+export type ResolvePageName = (
+  specAbsPath: string,
+  root: string
+) => string | null
+
 export interface SpecTypeDefinition {
   // When true, a screenshot gallery is rendered for spec files of this type.
   // @default false
@@ -114,6 +127,10 @@ export interface CollectTestCasesConfig {
   // Maps a spec file to a "domain" name (outermost grouping level).
   resolveDomain?: ResolveDomain
 
+  // Maps a spec file to a page name (innermost grouping level). Use for deep
+  // test trees the default single-segment rule collapses. See `ResolvePageName`.
+  resolvePageName?: ResolvePageName
+
   // Project root directory — used as the base for spec paths in
   // generated README links.
   // @default '.'
@@ -148,6 +165,7 @@ export interface ResolvedConfig {
   resolveApp: ResolveApp | undefined
   resolveCategory: ResolveCategory | undefined
   resolveDomain: ResolveDomain | undefined
+  resolvePageName: ResolvePageName | undefined
   rootDir: string
   scanDirs: string[]
   screenshotsDir: string
@@ -206,6 +224,7 @@ export const applyConfigDefaults = (
     resolveApp: user?.resolveApp ?? layoutResolvers?.resolveApp,
     resolveCategory: user?.resolveCategory ?? layoutResolvers?.resolveCategory,
     resolveDomain: user?.resolveDomain ?? layoutResolvers?.resolveDomain,
+    resolvePageName: user?.resolvePageName,
     rootDir,
     scanDirs,
     screenshotsDir: user?.screenshotsDir ?? "__screenshots__",
