@@ -18,6 +18,7 @@ export type AppDomains = Map<string, Map<string, Map<string, TestCase[]>>>
 //   fixme  → 🚧  (known broken / work in progress)
 //   fail   → ⚠️  (declared `test.fail` — expected to fail)
 //   slow   → 🐌  (`test.slow` — extended timeout)
+//   todo   → 📝  (`it.todo` — planned, not yet implemented)
 //
 // Visual signal is more useful than a uniform ☑️ — it would otherwise hide
 // the fact that some tests aren't actually exercised.
@@ -33,6 +34,8 @@ const iconForModifier = (modifier: TestCase["modifier"]): string => {
       return "⏭️"
     case "slow":
       return "🐌"
+    case "todo":
+      return "📝"
     default:
       return "☑️"
   }

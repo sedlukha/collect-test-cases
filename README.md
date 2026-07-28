@@ -17,6 +17,7 @@ In a monorepo with multiple apps and shared route packages, the situation is wor
 - `domain → category → page → spec type` hierarchy of collapsible `<details>` blocks
 - inline screenshot tables grouped by OS × locale (Playwright-style naming)
 - pluggable text transforms (the bundled `i18n` plugin resolves `t('key')` calls to actual translated text)
+- optional [runtime discovery](#runtime-discovery) — ask the runner for its real test list so `it.each` rows and helper-created tests aren't missed
 
 Zero runtime dependencies. Output is plain Markdown — render it on GitHub, in your docs site, anywhere.
 
@@ -99,6 +100,7 @@ The config is a plain ESM module exporting one object. All fields are optional u
 | `resolveApp`      | `(absPath, root) => …`            | from `layout` if set, else include all | Escape-hatch override for "does this spec belong to this app?".                                                            |
 | `resolveDomain`   | `(absPath, root) => string`       | from `layout` if set, else `''`      | Returns the outermost grouping label.                                                                                      |
 | `resolveCategory` | `(absPath, root) => string\|null` | from `layout` if set, else subfolder | Returns the second-level grouping label.                                                                                   |
+| `resolvePageName` | `(absPath, root) => string\|null` | subfolder / filename stem            | Returns the innermost grouping label. Use for deep test trees the default single-segment rule collapses — see [How grouping works](#how-grouping-works). |
 | `plugins`         | `CollectTestCasesPlugin[]`        | `[]`                                 | Renderer plugins — see [Plugin API](#plugin-api).                                                                          |
 
 Default `exclude`: `['**/node_modules/**', '**/.git/**', '**/__screenshots__/**']`.
@@ -160,6 +162,7 @@ A plugin is a plain object matching `CollectTestCasesPlugin`. Hooks:
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `name`                | Identifier used in diagnostics. Required.                                                                                                                                 |
 | `init(ctx)`           | Runs once after config is loaded. Receives `{ root }`. Plugins are init'd in the order they appear in `config.plugins`.                                                   |
+| `discover(ctx)`       | Asks a test runner which tests exist instead of parsing files as text. Receives `{ root }`, returns `DiscoveryResult[]` (or `null` to opt out; may be async). See [Runtime discovery](#runtime-discovery). |
 | `transformText(text)` | Applied to every test title, step name, and describe name. Multiple plugins compose left-to-right.                                                                        |
 | `screenshotLocales()` | Locale codes used as columns in the screenshot gallery. The first plugin returning a non-empty array wins; without one, the gallery falls back to `['en']`.               |
 
@@ -193,6 +196,64 @@ Before:  await expect(page.getByText(t('button.submit'))).toBeVisible()
 After:   await expect(page.getByText(**en: "Submit" · ru: "Отправить"**)).toBeVisible()
 ```
 
+## Runtime discovery
+
+By default the tool reads spec files as **text** and finds the call forms it recognises (see [What the static parser recognises](#what-the-static-parser-recognises)). Text mode is instant and needs no runner start-up, but it cannot see tests whose titles only exist while the code runs — `it.each` rows over a computed table, or tests created inside a shared helper.
+
+A **discovery adapter** closes that gap: it asks the runner itself which tests exist. Turn it on per config by adding one of the bundled adapters to `plugins`. Text mode stays the default — nothing changes unless you opt in.
+
+```js
+import { vitestDiscovery } from "collect-test-cases/plugins/discovery"
+
+const config = {
+  appName: "myapp",
+  include: ["__tests__/**/*.test.ts"],
+  specsDir: "__tests__",
+  plugins: [vitestDiscovery()],
+}
+
+export default config
+```
+
+`collect-test-cases/plugins/discovery` ships three adapters, one per supported runner:
+
+| Adapter                 | Command it runs                              | Notes                                                                 |
+| ----------------------- | -------------------------------------------- | --------------------------------------------------------------------- |
+| `vitestDiscovery()`     | `vitest list --json`                         | Returns `[{ name, file }]`. Use `--json`, **not** `--reporter=json`.  |
+| `jestDiscovery()`       | `jest --json`                                | Parses the standard `assertionResults` shape; maps `pending`/`todo` statuses to icons. |
+| `playwrightDiscovery()` | `playwright test --list --reporter=json`     | Reads test titles from the nested-suite JSON.                         |
+
+Each adapter accepts `{ command, args, cwd, configPath }` so you can pin a binary (`command: 'npx'`, `args: ['vitest']`), point at a config (`configPath`), or scope the run.
+
+**Name splitting.** Runners report a nested test as one flat string joined with `' > '` (e.g. `"outer > inner > title"`). The pipeline splits on `' > '`: the last segment is the title, the earlier ones are describe blocks. This is a deliberate, documented rule — a title that itself contains `' > '` will split wrongly, but no separator is unambiguous, and this is the one the runners emit. (Exported as `NAME_SEPARATOR`.)
+
+**Custom runners.** `discover()` is a plain plugin hook — implement it for any runner that can print its own test list:
+
+```ts
+const myRunner = {
+  name: "my-runner",
+  discover: ({ root }) => [
+    { file: "__tests__/a.test.ts", name: "group > does a thing" },
+  ],
+}
+```
+
+### What runtime mode gives up
+
+The `--json` test list carries only `name` and `file`. So compared with text mode, runtime mode **loses**:
+
+| Feature                        | Text mode | Runtime mode                        |
+| ------------------------------ | --------- | ----------------------------------- |
+| Finds every test               | no        | yes                                 |
+| Helper-created tests           | no        | yes                                 |
+| `it.each` rows                 | no (one entry) | yes, expanded (one entry per row) |
+| skip / todo icons              | yes       | only when the adapter reports a status (Vitest's list does not) |
+| `test.step` names              | yes       | no                                  |
+| screenshot gallery             | yes       | no                                  |
+| speed                          | instant   | pays the runner's start-up cost     |
+
+Discovered files are unioned with the glob results; a file the runner covers uses the discovered tests, and any other matched file still falls back to text parsing.
+
 ## Test status icons
 
 Each test case is rendered with a leading icon that reflects the modifier the call carried at the source. The icon makes skipped and work-in-progress tests visually distinct so the generated README doesn't pretend everything runs.
@@ -205,8 +266,21 @@ Each test case is rendered with a leading icon that reflects the modifier the ca
 | `test.fixme(…)`    | 🚧   | Known broken / work in progress.            |
 | `test.fail(…)`     | ⚠️    | Declared `test.fail` — expected to fail.    |
 | `test.slow(…)`     | 🐌   | Extended timeout via `test.slow`.           |
+| `it.todo(…)`       | 📝   | Planned, not yet implemented.               |
 
 Modifiers are also surfaced on the `TestCase.modifier` field for any custom rendering you build on top of the library exports.
+
+## What the static parser recognises
+
+In text mode `parseSpecFile` walks the file's AST and recognises these declaration forms (no runner needed):
+
+- `it()` / `test()` / `describe()`, plus the `test.describe()` / bare `describe()` block forms.
+- Modifiers: `.skip`, `.only`, `.fixme`, `.fail`, `.slow`, `.todo` (`.todo` → 📝). `.concurrent` and `.sequential` read as plain tests.
+- Parametrised generators: `it.each(table)('…')`, `it.for(table)('…')`, the tagged-template `` it.each`…`('…') ``, `it.skipIf(x)('…')`, `it.runIf(x)('…')`, and `describe.each(table)('…')`. A modifier may sit in between (`it.skip.each(table)('…')`).
+- Fixture tests: `test.extend({})('…')` (a bare `test.extend({})` with no title call is correctly ignored).
+- `test.step('…')` names, collected onto the enclosing test.
+
+Because it never runs the file, an `it.each` row appears as a **single** entry with its template title (e.g. `each %s`), and tests created inside a helper cannot be seen at all. For those, use [Runtime discovery](#runtime-discovery).
 
 ## How grouping works
 
@@ -214,7 +288,17 @@ Each config produces one README. Within that README the renderer groups specs as
 
 - **domain** — from `resolveDomain` (e.g. the segment after `routesDir`). Empty string skips the outer wrapper.
 - **category** — from `resolveCategory`, or the `__checks__` subfolder, or `'other'` for flat specs.
-- **pageName** — the subfolder inside `__checks__`, or the spec filename stem.
+- **pageName** — from `resolvePageName`, or the subfolder inside `__checks__`, or the spec filename stem.
+
+The default pageName is the **single** path segment right after `specsDir`. That collapses a deep tree — `__tests__/pages/a/x.test.ts` and `__tests__/shared/ui/z.test.ts` would both reduce to their first segment and every file would pile into one group. Set `resolvePageName` to key on the full sub-path instead:
+
+```js
+resolvePageName: (absPath, root) => {
+  const parts = absPath.slice(root.length + 1).split("/")
+  // everything between `__tests__/` and the file name
+  return parts.slice(1, -1).join("/") || null
+}
+```
 
 A spec whose `resolveApp` returns `{ sharedAcrossApps: true }` causes the renderer to inject the app name into screenshot filenames — matches Playwright's project-suffix convention.
 

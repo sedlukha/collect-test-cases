@@ -7,7 +7,7 @@ export interface TestCase {
   describes: string[]
   // Captured when the call carried a modifier (`test.skip('foo', ...)` →
   // `'skip'`). `undefined` for plain `test()`/`it()`.
-  modifier?: "fail" | "fixme" | "only" | "skip" | "slow"
+  modifier?: "fail" | "fixme" | "only" | "skip" | "slow" | "todo"
   pageName: string
   // True when the same spec file is included in more than one app's output.
   // Used by the screenshot gallery to inject the app name into image
@@ -21,7 +21,31 @@ export interface TestCase {
 }
 
 const TEST_FNS = new Set(["it", "test"])
-const TEST_MODIFIERS = new Set(["fail", "fixme", "only", "skip", "slow"])
+// Modifiers that map to a `modifier` value on the emitted TestCase.
+const TEST_MODIFIERS = new Set([
+  "fail",
+  "fixme",
+  "only",
+  "skip",
+  "slow",
+  "todo",
+])
+// Recognised as a plain test but WITHOUT a modifier icon — they change how the
+// runner schedules the test, not whether it runs. `it.concurrent('x', fn)` and
+// `it.sequential('x', fn)` read as ordinary tests in the document.
+const PLAIN_TEST_METHODS = new Set(["concurrent", "sequential"])
+// Methods that RETURN a test/describe function and are then called with the
+// title: `it.each(table)('…')`, `it.for(table)('…')`, `it.skipIf(x)('…')`,
+// `it.runIf(x)('…')`, `test.extend({})('…')`. The callee of the outer call is
+// itself a call (or tagged template), so these are classified separately from
+// the plain `it.skip('…')` property-access forms.
+const GENERATOR_METHODS = new Set([
+  "each",
+  "extend",
+  "for",
+  "runIf",
+  "skipIf",
+])
 const DESCRIBE_MODIFIERS = new Set(["fixme", "only", "skip"])
 
 type CallKind =
@@ -52,10 +76,62 @@ const collectAccess = (expr: ts.Expression): string[] | null => {
   return null
 }
 
+// Classifies a chain like `it.each(table)` / `describe.each(t)` / `it.skip.each(t)`
+// where the callee of the OUTER test call is itself a call. `inner` is the
+// property-access chain reached through the call/tagged-template wrapper (the
+// `it.each` in `it.each(table)('…')`). Returns the test/describe classification
+// for the outer call, or `null` if the chain isn't a recognised generator form.
+const classifyGenerator = (inner: ts.Expression): CallKind => {
+  if (!ts.isPropertyAccessExpression(inner)) return null
+
+  const segments = collectAccess(inner)
+  if (segments === null) return null
+
+  const [root, ...rest] = segments
+  const gen = rest[rest.length - 1]
+
+  if (root === undefined || gen === undefined || !GENERATOR_METHODS.has(gen)) {
+    return null
+  }
+
+  // Segments sitting between the root and the trailing generator method, e.g.
+  // `it.skip.each` → `['skip']`, `test.describe.each` → `['describe']`.
+  const middle = rest.slice(0, -1)
+
+  if (TEST_FNS.has(root)) {
+    // test.describe.each(table)('…') — a parametrised describe block.
+    if (middle.length === 1 && middle[0] === "describe") {
+      return { kind: "describe" }
+    }
+
+    // it.each / test.for / it.extend / it.skipIf / it.runIf, optionally with a
+    // single modifier in between (`it.skip.each(table)('…')`).
+    if (middle.length === 0) return { kind: "test" }
+
+    const m = middle[0]
+    if (middle.length === 1 && m !== undefined && TEST_MODIFIERS.has(m)) {
+      return { kind: "test", modifier: m }
+    }
+
+    return null
+  }
+
+  if (root === "describe" && middle.length === 0) {
+    return { kind: "describe" }
+  }
+
+  return null
+}
+
 // Classifies a call expression's callee against the set of frameworks this
 // package understands. Unrecognised callees (helpers, hooks, anything else)
 // return `null` and the walker simply recurses into their bodies.
 const classifyCall = (expr: ts.Expression): CallKind => {
+  // Generator forms: the callee is itself a call (`it.each(table)('…')`) or a
+  // tagged template (``it.each`…`('…')``). Look through that wrapper.
+  if (ts.isCallExpression(expr)) return classifyGenerator(expr.expression)
+  if (ts.isTaggedTemplateExpression(expr)) return classifyGenerator(expr.tag)
+
   if (ts.isIdentifier(expr)) {
     if (TEST_FNS.has(expr.text)) return { kind: "test" }
     if (expr.text === "describe") return { kind: "describe" }
@@ -79,6 +155,9 @@ const classifyCall = (expr: ts.Expression): CallKind => {
       if (m === "describe") return { kind: "describe" }
       if (m === "step") return { kind: "step" }
       if (TEST_MODIFIERS.has(m)) return { kind: "test", modifier: m }
+      // it.concurrent / it.sequential — a real test, rendered without a
+      // modifier icon (the runner only changes scheduling).
+      if (PLAIN_TEST_METHODS.has(m)) return { kind: "test" }
 
       // test.beforeEach / test.afterEach / test.use / test.extend / …
       // — not a test, not a step. The walker will recurse into the

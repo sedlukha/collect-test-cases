@@ -177,20 +177,29 @@ export const collectSpecFiles = (config: ResolvedConfig): string[] => {
   return [...all].sort()
 }
 
+// `casesByFile` (optional): ready-made cases keyed by absolute spec path,
+// supplied by a runtime discovery adapter. When an entry exists for a file,
+// those cases are used verbatim; otherwise the file is parsed as text with
+// `parseSpecFile`. Discovery gives the runner the final say on which tests
+// exist, so files it covers also skip `resolveApp` filtering.
 export const groupSpecs = (
   specFiles: string[],
-  config: ResolvedConfig
+  config: ResolvedConfig,
+  casesByFile?: Map<string, TestCase[]>
 ): GroupedSpecs => {
   const grouped: GroupedSpecs = new Map()
   const root = config.rootDir
 
   for (const absPath of specFiles) {
-    // In Playwright-discovery mode the list is already scoped to this config,
-    // so skip app filtering (the specs live outside the repo and would fail a
-    // path-based resolveApp).
-    const filter = config.playwright
-      ? undefined
-      : config.resolveApp?.(absPath, root)
+    const fromDiscovery = casesByFile?.has(absPath) ?? false
+    // In Playwright-discovery mode, or when a discovery adapter already
+    // produced this file's cases, the list is already scoped to this config,
+    // so skip app filtering (the specs may live outside the repo and would
+    // fail a path-based resolveApp).
+    const filter =
+      config.playwright || fromDiscovery
+        ? undefined
+        : config.resolveApp?.(absPath, root)
 
     if (filter === null) {
       continue
@@ -212,8 +221,10 @@ export const groupSpecs = (
     const category = userCategory ?? checksSubfolder ?? "other"
     const domain = config.resolveDomain?.(absPath, root) ?? ""
     const specType = extractSpecType(specFile, config.specTypes)
-    const pageName = checksSubfolder ?? specFile.split(".")[0] ?? specFile
-    const cases = parseSpecFile(absPath)
+    const userPageName = config.resolvePageName?.(absPath, root) ?? null
+    const pageName =
+      userPageName ?? checksSubfolder ?? specFile.split(".")[0] ?? specFile
+    const cases = casesByFile?.get(absPath) ?? parseSpecFile(absPath)
     const casesWithPath = cases.map((c) => ({
       ...c,
       pageName,
