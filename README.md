@@ -21,6 +21,49 @@ In a monorepo with multiple apps and shared route packages, the situation is wor
 
 Zero runtime dependencies. Output is plain Markdown — render it on GitHub, in your docs site, anywhere.
 
+## Example
+
+Say you have this spec file:
+
+```ts
+// __checks__/home-page.spec.ts
+import { test, expect } from "@playwright/test"
+
+test.describe("Home page", () => {
+  test("returns 200 OK", async ({ page }) => {
+    const res = await page.goto("/")
+    expect(res?.status()).toBe(200)
+  })
+
+  test("shows the headline", async ({ page }) => {
+    await test.step("open the page", async () => {
+      await page.goto("/")
+    })
+    await expect(page.getByRole("heading")).toBeVisible()
+  })
+
+  test.skip("redirects logged-in users", async () => {})
+})
+```
+
+Run the CLI:
+
+```bash
+npx collect-test-cases
+```
+
+It writes a Markdown file that renders on GitHub as nested, collapsible sections — one click to expand each:
+
+```
+▸ Home page (3 tests)
+    ▸ ☑️ returns 200 OK
+    ▸ ☑️ shows the headline
+          1. open the page          ← test.step() names become numbered steps
+    ▸ ⏭️ redirects logged-in users  ← test.skip keeps its marker
+```
+
+Every `▸` is a real `<details>` block. Skipped / todo / only tests keep a distinct icon, so the doc never pretends a skipped test runs. That's the whole idea: a browsable, always-current map of what your suite covers.
+
 ## Installation
 
 ```bash
@@ -37,25 +80,23 @@ Requires Node.js ≥ 22 (uses `node:fs` `globSync`) and TypeScript ≥ 5 (peer-d
 
 ## Quick start
 
-1. Create `collect-test-cases.config.mjs` next to your app:
+1. Create `collect-test-cases.config.mjs` next to your app. The smallest config is just a name:
 
 ```js
 /** @type {import('collect-test-cases').CollectTestCasesConfig} */
-const config = {
+export default {
   appName: "myapp",
-  specTypes: {
-    auth: { label: "🔐 Auth", order: 1, pattern: ".auth." },
-    screenshot: {
-      gallery: true,
-      label: "📸 Visual",
-      order: 0,
-      pattern: ".screenshot.",
-    },
-    other: { label: "Tests", order: 100 },
-  },
 }
+```
 
-export default config
+   By default it scans `**/__checks__/**/*.spec.ts` (the Playwright convention). **Using Vitest or Jest?** Point `include` / `specsDir` at your tests:
+
+```js
+export default {
+  appName: "myapp",
+  include: ["**/*.test.ts"],
+  specsDir: "src",
+}
 ```
 
 2. Run the CLI from the directory containing the config:
@@ -64,13 +105,15 @@ export default config
 npx collect-test-cases
 ```
 
-It writes `./README.md` next to the config:
+   It writes `./README.md` next to the config:
 
 ```
 Written /…/myapp/README.md (42 tests)
 ```
 
 The generator walks up from `process.cwd()` until it finds the nearest `collect-test-cases.config.mjs` or `collect-test-cases.config.js`, so any subdirectory of an app works.
+
+From here you can add spec-type sections, a screenshot gallery, an i18n plugin, or runtime discovery — see the sections below, or copy a ready-made setup from [`examples/`](./examples).
 
 ## CLI
 

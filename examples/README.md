@@ -9,6 +9,7 @@ Each subfolder is a self-contained example showing one feature of `collect-test-
 | [screenshots/](./screenshots)    | Rendering a Playwright screenshot gallery (`gallery: true`) with OS rows.                              |
 | [i18n/](./i18n)                  | The bundled `i18n` plugin resolving `t('key')` references in test titles.                              |
 | [monorepo/](./monorepo)          | The `layout` block — app filtering via `appsDir`, domain grouping via `routesDir`, and `sharedSpecs`.  |
+| [discovery/](./discovery)        | Runtime discovery (`vitestDiscovery`) + `resolvePageName` — finds `it.each` rows and helper-created tests, and keeps a deep tree from collapsing. |
 
 ## Re-generating the OUTPUT.md files
 
