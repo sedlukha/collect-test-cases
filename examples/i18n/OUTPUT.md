@@ -14,35 +14,11 @@ _Auto-generated. Do not edit manually._
 
 <blockquote>
 
-<details>
-<summary><strong>Tests</strong> (3 tests)</summary>
-
-<blockquote>
-
 📄 [`__checks__/login-page.spec.ts`](./__checks__/login-page.spec.ts)
 
-<details>
-<summary>☑️ renders the **en: "Submit" · ru: "Отправить"** button</summary>
-
-
-</details>
-
-<details>
-<summary>☑️ shows **en: "Email must be 254 characters or less" · ru: "Email должно содержать не более 254 символов"** when input is too long</summary>
-
-
-</details>
-
-<details>
-<summary>☑️ shows **en: "Password is required" · ru: "Password обязательно"**</summary>
-
-
-</details>
-
-
-</blockquote>
-
-</details>
+- ☑️ renders the **en: "Submit" · ru: "Отправить"** button
+- ☑️ shows **en: "Email must be 254 characters or less" · ru: "Email должно содержать не более 254 символов"** when input is too long
+- ☑️ shows **en: "Password is required" · ru: "Password обязательно"**
 
 </blockquote>
 

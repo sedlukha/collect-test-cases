@@ -56,13 +56,13 @@ It writes a Markdown file that renders on GitHub as nested, collapsible sections
 
 ```
 ▸ Home page (3 tests)
-    ▸ ☑️ returns 200 OK
-    ▸ ☑️ shows the headline
+    - ☑️ returns 200 OK             ← a step-less test is a plain line
+    ▸ ☑️ shows the headline         ← only tests WITH steps get a box
           1. open the page          ← test.step() names become numbered steps
-    ▸ ⏭️ redirects logged-in users  ← test.skip keeps its marker
+    - ⏭️ redirects logged-in users  ← test.skip keeps its marker
 ```
 
-Every `▸` is a real `<details>` block. Skipped / todo / only tests keep a distinct icon, so the doc never pretends a skipped test runs. That's the whole idea: a browsable, always-current map of what your suite covers.
+A test with `test.step()` names becomes a collapsible `<details>` block (every `▸`); a test with no steps — the norm for Vitest / Jest — renders as a plain list item instead of an empty box. Skipped / todo / only tests keep a distinct icon, so the doc never pretends a skipped test runs. When a page holds a single spec type, that level is dropped, and each file link sits with its own tests. That's the whole idea: a browsable, always-current map of what your suite covers.
 
 ## Installation
 

@@ -1389,11 +1389,11 @@ describe("generateAppMarkdown", () => {
     assert.ok(md.includes("**2 tests**"))
     assert.ok(!md.includes("<strong>quizbase</strong>"))
     assert.ok(md.includes("<strong>FlashCardPage</strong> (2 tests)"))
-    assert.ok(
-      md.includes("<summary><strong>👥 Guest</strong> (2 tests)</summary>")
-    )
-    assert.ok(md.includes("<summary>☑️ should return 200 status</summary>"))
-    assert.ok(md.includes("<summary>☑️ should return correct meta</summary>"))
+    // Only one spec type is in play, so its level is collapsed away.
+    assert.ok(!md.includes("👥 Guest"))
+    // Step-less tests render as plain list items, not empty `<details>` boxes.
+    assert.ok(md.includes("- ☑️ should return 200 status"))
+    assert.ok(md.includes("- ☑️ should return correct meta"))
   })
 
   test("renders test count totals", () => {
@@ -1442,12 +1442,11 @@ describe("generateAppMarkdown", () => {
     const md = renderApp("myapp", domains)
     assert.ok(md.includes("**3 tests**"))
     assert.ok(md.includes("<strong>root</strong> (3 tests)"))
-    assert.ok(
-      md.includes("<summary><strong>Tests</strong> (3 tests)</summary>")
-    )
-    assert.ok(md.includes("<summary>☑️ test one</summary>"))
-    assert.ok(md.includes("<summary>☑️ test two</summary>"))
-    assert.ok(md.includes("<summary>☑️ test three</summary>"))
+    // Single spec type — the "Tests" level is collapsed away.
+    assert.ok(!md.includes("<summary><strong>Tests</strong>"))
+    assert.ok(md.includes("- ☑️ test one"))
+    assert.ok(md.includes("- ☑️ test two"))
+    assert.ok(md.includes("- ☑️ test three"))
   })
 
   test("uses no describe prefix when describes array is empty", () => {
@@ -1478,7 +1477,7 @@ describe("generateAppMarkdown", () => {
     ])
 
     const md = renderApp("app", domains)
-    assert.ok(md.includes("<summary>☑️ bare test title</summary>"))
+    assert.ok(md.includes("- ☑️ bare test title"))
     assert.ok(!md.includes("☑️  > bare test title"))
   })
 
@@ -1542,7 +1541,7 @@ describe("generateAppMarkdown", () => {
         "![ubuntu en](./apps/myapp/__checks__/HomePage/__screenshots__/HomePage.screenshot.spec.ts/home-page-Desktop-Chrome---en.png)"
       )
     )
-    assert.ok(md.includes("<summary>☑️ should match visual snapshot</summary>"))
+    assert.ok(md.includes("- ☑️ should match visual snapshot"))
   })
 
   test("makes spec paths relative to outputDir when outputDir != root", () => {
@@ -1929,39 +1928,39 @@ describe("generateAppMarkdown", () => {
 
   test("default icon ☑️ is used when no modifier is set", () => {
     const md = renderApp("myapp", oneCaseDomain("plain test"))
-    assert.ok(md.includes("<summary>☑️ plain test</summary>"))
+    assert.ok(md.includes("- ☑️ plain test"))
   })
 
   test("renders ⏭️ icon for skip modifier", () => {
     const md = renderApp("myapp", oneCaseDomain("skipped test", "skip"))
-    assert.ok(md.includes("<summary>⏭️ skipped test</summary>"))
-    assert.ok(!md.includes("<summary>☑️ skipped test</summary>"))
+    assert.ok(md.includes("- ⏭️ skipped test"))
+    assert.ok(!md.includes("- ☑️ skipped test"))
   })
 
   test("renders 🎯 icon for only modifier", () => {
     const md = renderApp("myapp", oneCaseDomain("focused test", "only"))
-    assert.ok(md.includes("<summary>🎯 focused test</summary>"))
+    assert.ok(md.includes("- 🎯 focused test"))
   })
 
   test("renders 🚧 icon for fixme modifier", () => {
     const md = renderApp("myapp", oneCaseDomain("broken test", "fixme"))
-    assert.ok(md.includes("<summary>🚧 broken test</summary>"))
+    assert.ok(md.includes("- 🚧 broken test"))
   })
 
   test("renders ⚠️ icon for fail modifier", () => {
     const md = renderApp("myapp", oneCaseDomain("expected to fail", "fail"))
-    assert.ok(md.includes("<summary>⚠️ expected to fail</summary>"))
+    assert.ok(md.includes("- ⚠️ expected to fail"))
   })
 
   test("renders 🐌 icon for slow modifier", () => {
     const md = renderApp("myapp", oneCaseDomain("slow test", "slow"))
-    assert.ok(md.includes("<summary>🐌 slow test</summary>"))
+    assert.ok(md.includes("- 🐌 slow test"))
   })
 
   test("renders 📝 icon for todo modifier", () => {
     const md = renderApp("myapp", oneCaseDomain("planned test", "todo"))
-    assert.ok(md.includes("<summary>📝 planned test</summary>"))
-    assert.ok(!md.includes("<summary>☑️ planned test</summary>"))
+    assert.ok(md.includes("- 📝 planned test"))
+    assert.ok(!md.includes("- ☑️ planned test"))
   })
 
   test("mixes icons per test in one page", () => {
@@ -1984,9 +1983,9 @@ describe("generateAppMarkdown", () => {
     ])
 
     const md = renderApp("myapp", domains)
-    assert.ok(md.includes("<summary>☑️ a</summary>"))
-    assert.ok(md.includes("<summary>⏭️ b</summary>"))
-    assert.ok(md.includes("<summary>🎯 c</summary>"))
+    assert.ok(md.includes("- ☑️ a"))
+    assert.ok(md.includes("- ⏭️ b"))
+    assert.ok(md.includes("- 🎯 c"))
   })
 
   test("renders steps with blockquote prefix", () => {
@@ -2164,5 +2163,162 @@ describe("generateAppMarkdown", () => {
       md.match(/📄 \[`apps\/myapp\/__checks__\/page\.guest\.spec\.ts`\]/g) ?? []
     ).length
     assert.equal(linkCount, 1)
+  })
+
+  // Matches a `<details>` whose summary is a TEST (not a `<strong>` group) and
+  // whose body is empty — the exact shape the issue measured 167 of.
+  const EMPTY_TEST_DETAILS =
+    /<details>\s*<summary>(?!<strong>)[\s\S]*?<\/summary>\s*<\/details>/g
+
+  const stepLessSuite = (): AppDomains => {
+    const cases = ["declares every subpath", "points at a file", "no extras"].map(
+      (title) => ({
+        describes: [],
+        pageName: "exports",
+        specPath: "__tests__/exports.test.ts",
+        specType: "default",
+        steps: [] as string[],
+        title,
+      })
+    )
+
+    return new Map([["", new Map([["other", new Map([["exports", cases]])]])]])
+  }
+
+  test("a step-less suite emits no empty <details> blocks", () => {
+    const md = renderApp("myapp", stepLessSuite())
+
+    assert.equal(
+      md.match(EMPTY_TEST_DETAILS)?.length ?? 0,
+      0,
+      "no test should render as an empty collapsible box"
+    )
+    assert.ok(md.includes("- ☑️ declares every subpath"))
+    assert.ok(md.includes("- ☑️ points at a file"))
+    assert.ok(md.includes("- ☑️ no extras"))
+  })
+
+  test("a test with steps keeps the <details> form", () => {
+    const domains: AppDomains = new Map([
+      [
+        "",
+        new Map([
+          [
+            "other",
+            new Map([
+              [
+                "page",
+                [
+                  {
+                    describes: [],
+                    pageName: "page",
+                    specPath: "__tests__/page.spec.ts",
+                    specType: "default",
+                    steps: ["open the page", "assert the title"],
+                    title: "walks the flow",
+                  },
+                ],
+              ],
+            ]),
+          ],
+        ]),
+      ],
+    ])
+
+    const md = renderApp("myapp", domains)
+    assert.ok(md.includes("<summary>☑️ walks the flow</summary>"))
+    assert.ok(md.includes("1. open the page"))
+    assert.ok(md.includes("2. assert the title"))
+    // A test with a body is never an EMPTY details block.
+    assert.equal(md.match(EMPTY_TEST_DETAILS)?.length ?? 0, 0)
+  })
+
+  test("each file link is attached to the tests that came from it", () => {
+    const domains: AppDomains = new Map([
+      [
+        "",
+        new Map([
+          [
+            "other",
+            new Map([
+              [
+                "error-page",
+                [
+                  {
+                    describes: ["ErrorGlobalPage"],
+                    pageName: "error-page",
+                    specPath: "__tests__/error-global-page.test.tsx",
+                    specType: "default",
+                    steps: [],
+                    title: "renders a global error",
+                  },
+                  {
+                    describes: ["ErrorSlugPage"],
+                    pageName: "error-page",
+                    specPath: "__tests__/error-slug-page.test.tsx",
+                    specType: "default",
+                    steps: [],
+                    title: "renders a slug error",
+                  },
+                ],
+              ],
+            ]),
+          ],
+        ]),
+      ],
+    ])
+
+    const md = renderApp("myapp", domains)
+    const globalLinkAt = md.indexOf("error-global-page.test.tsx`]")
+    const globalTestAt = md.indexOf("renders a global error")
+    const slugLinkAt = md.indexOf("error-slug-page.test.tsx`]")
+    const slugTestAt = md.indexOf("renders a slug error")
+
+    // Each link precedes its own test, and the first file's block (link + test)
+    // fully precedes the second file's link — links are not hoisted to the top.
+    assert.ok(globalLinkAt < globalTestAt)
+    assert.ok(globalTestAt < slugLinkAt)
+    assert.ok(slugLinkAt < slugTestAt)
+  })
+
+  test("the spec-type level is kept when more than one type is in play", () => {
+    const domains: AppDomains = new Map([
+      [
+        "",
+        new Map([
+          [
+            "page",
+            new Map([
+              [
+                "page",
+                [
+                  {
+                    describes: [],
+                    pageName: "page",
+                    specPath: "apps/myapp/__checks__/page.guest.spec.ts",
+                    specType: "guest",
+                    steps: [],
+                    title: "guest test",
+                  },
+                  {
+                    describes: [],
+                    pageName: "page",
+                    specPath: "apps/myapp/__checks__/page.auth.spec.ts",
+                    specType: "auth",
+                    steps: [],
+                    title: "auth test",
+                  },
+                ],
+              ],
+            ]),
+          ],
+        ]),
+      ],
+    ])
+
+    const md = renderApp("myapp", domains, { config: { specTypes: sampleSpecTypes } })
+    // Two types → both labels are shown to separate them.
+    assert.ok(md.includes("<summary><strong>👥 Guest</strong> (1 tests)</summary>"))
+    assert.ok(md.includes("<summary><strong>🔐 Auth</strong> (1 tests)</summary>"))
   })
 })

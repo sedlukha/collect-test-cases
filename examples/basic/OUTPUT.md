@@ -14,11 +14,6 @@ _Auto-generated. Do not edit manually._
 
 <blockquote>
 
-<details>
-<summary><strong>Tests</strong> (3 tests)</summary>
-
-<blockquote>
-
 📄 [`__checks__/checkout/checkout-flow.spec.ts`](./__checks__/checkout/checkout-flow.spec.ts)
 
 <details>
@@ -34,22 +29,8 @@ _Auto-generated. Do not edit manually._
 
 </details>
 
-<details>
-<summary>🎯 shows shipping options when address is filled in</summary>
-
-
-</details>
-
-<details>
-<summary>🚧 supports applying a discount code</summary>
-
-
-</details>
-
-
-</blockquote>
-
-</details>
+- 🎯 shows shipping options when address is filled in
+- 🚧 supports applying a discount code
 
 </blockquote>
 
@@ -69,35 +50,11 @@ _Auto-generated. Do not edit manually._
 
 <blockquote>
 
-<details>
-<summary><strong>Tests</strong> (3 tests)</summary>
-
-<blockquote>
-
 📄 [`__checks__/home-page.spec.ts`](./__checks__/home-page.spec.ts)
 
-<details>
-<summary>☑️ returns 200 OK for the home page</summary>
-
-
-</details>
-
-<details>
-<summary>☑️ renders the marketing headline</summary>
-
-
-</details>
-
-<details>
-<summary>⏭️ redirects logged-in users to the dashboard</summary>
-
-
-</details>
-
-
-</blockquote>
-
-</details>
+- ☑️ returns 200 OK for the home page
+- ☑️ renders the marketing headline
+- ⏭️ redirects logged-in users to the dashboard
 
 </blockquote>
 
