@@ -1,6 +1,6 @@
 {
   "name": "collect-test-cases",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Scan Playwright/Vitest/Jest spec files and generate a single Markdown README per app, with optional screenshot galleries and an i18n plugin.",
   "keywords": [
     "playwright",
