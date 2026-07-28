@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs"
-import { basename, dirname, join, relative } from "node:path"
+import { basename, dirname, join, relative, sep } from "node:path"
 
 import type { CollectTestCasesConfig, ResolvedConfig } from "./config.js"
 import { applyConfigDefaults } from "./config.js"
@@ -47,7 +47,8 @@ const toRelLink = (
   outputDir: string
 ): string => {
   const abs = join(root, specPathFromRoot)
-  const rel = relative(outputDir, abs)
+  // Markdown links must use forward slashes on every OS.
+  const rel = relative(outputDir, abs).split(sep).join("/")
 
   return rel.startsWith(".") ? rel : `./${rel}`
 }

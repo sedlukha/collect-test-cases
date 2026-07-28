@@ -207,7 +207,10 @@ export const groupSpecs = (
 
     const sharedAcrossApps = filter?.sharedAcrossApps ?? false
 
-    const rel = relative(root, absPath)
+    // Normalise to forward slashes so segment logic, stored `specPath`, and the
+    // Markdown links the renderer builds are POSIX on every OS (a Windows
+    // backslash path would both mis-split here and break the emitted links).
+    const rel = relative(root, absPath).split(sep).join("/")
     const parts = rel.split("/")
     const specFile = basename(absPath)
     const checksIdx = parts.indexOf(config.specsDir)

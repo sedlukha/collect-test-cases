@@ -3,7 +3,9 @@ import {
   chmodSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
@@ -164,6 +166,35 @@ describe("reconcileDiscovery", () => {
     assert.deepEqual(rec.specFiles, ["/r/a.test.ts", "/r/b.test.ts"])
     assert.deepEqual(rec.fellBack, ["/r/b.test.ts"])
     assert.deepEqual(rec.skipped, [])
+  })
+
+  test("same physical file via symlink + realpath is not a mismatch (pnpm)", () => {
+    // Mimic pnpm: the real spec lives in a store dir; the glob reaches it
+    // through a symlink, the runner reports the store realpath.
+    mkdirSync(join(tmpDir, "store/__tests__"), { recursive: true })
+    const real = join(tmpDir, "store/__tests__/x.test.ts")
+    writeFileSync(real, "it('a', () => {})")
+    symlinkSync(join(tmpDir, "store"), join(tmpDir, "link"))
+
+    const globbedViaSymlink = join(tmpDir, "link/__tests__/x.test.ts")
+    const reportedRealpath = realpathSync(globbedViaSymlink)
+    assert.notEqual(globbedViaSymlink, reportedRealpath) // genuinely different spellings
+
+    const skip = reconcileDiscovery(
+      [globbedViaSymlink],
+      byFiles(reportedRealpath),
+      "skip"
+    )
+    assert.deepEqual(skip.skipped, []) // NOT a false "skipped"
+    assert.equal(skip.specFiles.length, 1)
+
+    const parse = reconcileDiscovery(
+      [globbedViaSymlink],
+      byFiles(reportedRealpath),
+      "parse"
+    )
+    assert.deepEqual(parse.fellBack, [])
+    assert.equal(parse.specFiles.length, 1) // not double-counted
   })
 })
 

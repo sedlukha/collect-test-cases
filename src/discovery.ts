@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs"
 import { isAbsolute, resolve } from "node:path"
 
 import type { TestCase } from "./parser.js"
@@ -97,19 +98,38 @@ export interface DiscoveryReconciliation {
 // the adapter did not report are either skipped (default) or text-parsed as a
 // marked fallback. Files the adapter reported that `include` did not match are
 // still included — the adapter wins in both directions.
+// Collapse a path to its on-disk identity, so the SAME physical file reached
+// two ways — a package's node_modules symlink and the pnpm-store realpath —
+// compares equal. `globSync` and a runner often report these different spellings
+// for one file; without this a shared spec looks "not reported" (a false skip,
+// and in strict mode a false CI failure) or gets counted twice.
+const canonical = (p: string): string => {
+  try {
+    return realpathSync(p)
+  } catch {
+    return p
+  }
+}
+
 export const reconcileDiscovery = (
   globbed: string[],
   casesByFile: Map<string, TestCase[]>,
   fallback: "parse" | "skip"
 ): DiscoveryReconciliation => {
-  const reported = new Set(casesByFile.keys())
-  const includedNotReported = globbed.filter((f) => !reported.has(f)).sort()
+  const reported = [...casesByFile.keys()]
+  const reportedCanonical = new Set(reported.map(canonical))
+  const includedNotReported = globbed
+    .filter((f) => !reportedCanonical.has(canonical(f)))
+    .sort()
 
   if (fallback === "parse") {
+    // Union of the adapter's files and the truly-unreported globbed ones. Using
+    // `includedNotReported` (canonical-deduped) rather than all of `globbed`
+    // avoids listing one physical file twice under two path spellings.
     return {
       fellBack: includedNotReported,
       skipped: [],
-      specFiles: [...new Set([...reported, ...globbed])].sort(),
+      specFiles: [...new Set([...reported, ...includedNotReported])].sort(),
     }
   }
 
