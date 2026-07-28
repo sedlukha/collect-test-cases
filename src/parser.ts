@@ -5,6 +5,11 @@ import ts from "typescript"
 
 export interface TestCase {
   describes: string[]
+  // Set on a synthetic placeholder for a fallback file that text-parsing found
+  // NO tests in (e.g. all its tests come from a shared helper). It is not a real
+  // test — it is excluded from every count and rendered only as a warning, so
+  // the file is not silently dropped or shown as an unexplained "0 tests".
+  emptyFallback?: boolean
   // True when this case was text-parsed as a fallback while a discovery adapter
   // was active (the runner did not report the file). The renderer marks it so a
   // reader can see the case did not come from the runner. `undefined` otherwise.

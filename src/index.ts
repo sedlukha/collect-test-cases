@@ -123,10 +123,12 @@ export const run = async (): Promise<void> => {
   }
 
   const domains = groupSpecs(specFiles, config, casesByFile)
+  // Empty-fallback placeholders are warnings, not tests — exclude from the count.
   const total = [...domains.values()]
     .flatMap((c) => [...c.values()])
     .flatMap((p) => [...p.values()])
-    .flat().length
+    .flat()
+    .filter((tc) => !tc.emptyFallback).length
 
   const markdown = generateAppMarkdown({
     config,

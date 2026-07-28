@@ -329,7 +329,7 @@ export default {
 }
 ```
 
-With `fallback: "parse"` the unreported files are still parsed, but each is flagged in the output (`⚠️ text-parsed (not reported by the runner)`) so no group silently claims to be the runner's answer.
+With `fallback: "parse"` the unreported files are still parsed, but each is flagged in the output (`⚠️ text-parsed (not reported by the runner)`) so no group silently claims to be the runner's answer. A fallback file the text parser finds **no** tests in (e.g. its tests come from a shared helper) is still named, with `⚠️ text-parsed, the parser found no tests in this file` — a group never shows a count without saying where it came from.
 
 ### What runtime mode gives up
 

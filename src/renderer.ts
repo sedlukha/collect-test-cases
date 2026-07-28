@@ -186,9 +186,17 @@ const renderPageCases = (
   appName: string,
   screenshotLocales: string[]
 ): void => {
+  // Placeholder cases for fallback files that text-parsing found no tests in
+  // are not real tests — keep them out of the count and the test list, and
+  // surface them as an explicit warning at the end instead.
+  const realCases = cases.filter((tc) => !tc.emptyFallback)
+  const emptyFallbackSpecs = [
+    ...new Set(cases.filter((tc) => tc.emptyFallback).map((tc) => tc.specPath)),
+  ]
+
   lines.push("<details>")
   lines.push(
-    `<summary><strong>${pageName}</strong> (${cases.length} tests)</summary>`
+    `<summary><strong>${pageName}</strong> (${realCases.length} tests)</summary>`
   )
   lines.push("")
   lines.push("<blockquote>")
@@ -199,7 +207,7 @@ const renderPageCases = (
     .map(([type]) => type)
 
   for (const specType of specTypeOrder) {
-    const typeCases = cases.filter((tc) => tc.specType === specType)
+    const typeCases = realCases.filter((tc) => tc.specType === specType)
 
     if (typeCases.length > 0) {
       const def = config.specTypes[specType]
@@ -290,6 +298,16 @@ const renderPageCases = (
     }
   }
 
+  // Fallback files the text parser found no tests in still get named here — a
+  // "0 tests" group must never stay silent about where that 0 came from.
+  for (const sp of emptyFallbackSpecs) {
+    const link = toRelLink(sp, root, outputDir)
+    lines.push(
+      `📄 [\`${sp}\`](${link}) — ⚠️ text-parsed, the parser found no tests in this file`
+    )
+    lines.push("")
+  }
+
   lines.push("</blockquote>")
   lines.push("")
   lines.push("</details>")
@@ -358,16 +376,21 @@ export const generateAppMarkdown = ({
     "",
   ]
 
-  if (total === 0) {
+  // Empty-fallback placeholders don't count as tests, but a document made up
+  // ONLY of them must still render (to warn about the files).
+  const hasEmptyFallback = flattenDomains(domains).some((tc) => tc.emptyFallback)
+
+  if (total === 0 && !hasEmptyFallback) {
     return lines.join("\n")
   }
 
   for (const [domain, packageTypes] of domains) {
-    const domainTotal = [...packageTypes.values()]
+    const domainCases = [...packageTypes.values()]
       .flatMap((pages) => [...pages.values()])
-      .flat().length
+      .flat()
+    const domainTotal = domainCases.filter(isRealCase).length
 
-    if (domainTotal === 0) {
+    if (domainTotal === 0 && !domainCases.some((tc) => tc.emptyFallback)) {
       continue
     }
 
@@ -382,9 +405,10 @@ export const generateAppMarkdown = ({
     }
 
     for (const [packageType, pages] of packageTypes) {
-      const pkgTotal = [...pages.values()].flat().length
+      const pkgCases = [...pages.values()].flat()
+      const pkgTotal = pkgCases.filter(isRealCase).length
 
-      if (pkgTotal === 0) {
+      if (pkgTotal === 0 && !pkgCases.some((tc) => tc.emptyFallback)) {
         continue
       }
 
@@ -427,8 +451,14 @@ export const generateAppMarkdown = ({
   return lines.join("\n")
 }
 
-const countDomains = (domains: AppDomains): number =>
+const isRealCase = (tc: TestCase): boolean => !tc.emptyFallback
+
+const flattenDomains = (domains: AppDomains): TestCase[] =>
   [...domains.values()]
     .flatMap((pkgs) => [...pkgs.values()])
     .flatMap((pages) => [...pages.values()])
-    .flat().length
+    .flat()
+
+// Counts real tests only — empty-fallback placeholders are not tests.
+const countDomains = (domains: AppDomains): number =>
+  flattenDomains(domains).filter(isRealCase).length
