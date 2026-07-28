@@ -1,7 +1,12 @@
 import { existsSync, readFileSync } from "node:fs"
-import { basename, dirname, join, relative } from "node:path"
+import { basename, dirname, join, relative, sep } from "node:path"
 
 import type { ResolveApp, ResolveCategory, ResolveDomain } from "./config.js"
+
+// Path relative to `root`, normalised to forward slashes so segment matching
+// (`segmentAfter`) works regardless of the OS path separator.
+const relPosix = (root: string, absPath: string): string =>
+  relative(root, absPath).split(sep).join("/")
 
 // Describes the monorepo layout so the package can build resolvers
 // for `resolveApp`/`resolveDomain`/`resolveCategory` without each
@@ -153,7 +158,7 @@ export const buildLayoutResolvers = (
   const sharedSpecsDir = shared?.specsDir ?? defaultSpecsDir
 
   const resolveApp: ResolveApp = (specAbsPath, root) => {
-    const rel = relative(root, specAbsPath)
+    const rel = relPosix(root, specAbsPath)
     const appSegment = segmentAfter(rel, layout.appsDir)
 
     if (appSegment !== null) {
@@ -180,7 +185,7 @@ export const buildLayoutResolvers = (
 
   const resolveDomain: ResolveDomain | undefined = layout.routesDir
     ? (specAbsPath, root) => {
-        const rel = relative(root, specAbsPath)
+        const rel = relPosix(root, specAbsPath)
 
         return segmentAfter(rel, layout.routesDir ?? "") ?? ""
       }
@@ -188,7 +193,7 @@ export const buildLayoutResolvers = (
 
   const resolveCategory: ResolveCategory | undefined = layout.categoryAnchor
     ? (specAbsPath, root) => {
-        const rel = relative(root, specAbsPath)
+        const rel = relPosix(root, specAbsPath)
 
         return segmentAfter(rel, layout.categoryAnchor ?? "")
       }

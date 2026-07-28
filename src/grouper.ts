@@ -207,7 +207,10 @@ export const groupSpecs = (
 
     const sharedAcrossApps = filter?.sharedAcrossApps ?? false
 
-    const rel = relative(root, absPath)
+    // Normalise to forward slashes so segment logic, stored `specPath`, and the
+    // Markdown links the renderer builds are POSIX on every OS (a Windows
+    // backslash path would both mis-split here and break the emitted links).
+    const rel = relative(root, absPath).split(sep).join("/")
     const parts = rel.split("/")
     const specFile = basename(absPath)
     const checksIdx = parts.indexOf(config.specsDir)
@@ -227,12 +230,36 @@ export const groupSpecs = (
     // A file the adapter reported uses its cases verbatim. A file NOT in the
     // discovery result while discovery is active is a text-parsed fallback —
     // mark it so the renderer can flag that it didn't come from the runner.
+    // When text parsing finds nothing (helper-created tests), keep a single
+    // placeholder so the file is still surfaced, marked, and not counted.
     const discovered = casesByFile?.get(absPath)
-    const cases =
-      discovered ??
-      (casesByFile
-        ? parseSpecFile(absPath).map((c) => ({ ...c, fallback: true }))
-        : parseSpecFile(absPath))
+    let cases: TestCase[]
+
+    if (discovered) {
+      cases = discovered
+    } else if (casesByFile) {
+      const parsed = parseSpecFile(absPath).map((c) => ({
+        ...c,
+        fallback: true,
+      }))
+      cases =
+        parsed.length > 0
+          ? parsed
+          : [
+              {
+                describes: [],
+                emptyFallback: true,
+                fallback: true,
+                pageName: "",
+                specPath: absPath,
+                specType: "unknown",
+                steps: [],
+                title: "",
+              },
+            ]
+    } else {
+      cases = parseSpecFile(absPath)
+    }
     const casesWithPath = cases.map((c) => ({
       ...c,
       pageName,

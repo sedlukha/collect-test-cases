@@ -1275,6 +1275,71 @@ describe("groupSpecs page names & discovery cases", () => {
       /reported\.test\.ts`\].*text-parsed/
     )
   })
+
+  test("marks a fallback file whose tests come from a helper (zero parsed cases)", () => {
+    mkdirSync(join(tmpDir, "__tests__"), { recursive: true })
+    const reported = join(tmpDir, "__tests__/reported.test.ts")
+    const normalGap = join(tmpDir, "__tests__/normal-gap.test.ts")
+    const helperGap = join(tmpDir, "__tests__/helper-gap.test.ts")
+    writeFileSync(reported, "test('reported one', () => {})")
+    writeFileSync(normalGap, "test('gap one', () => {})")
+    // All tests created by a helper — the text parser finds nothing.
+    writeFileSync(helperGap, "defineSuite('Boundary')")
+
+    const resolved = applyConfigDefaults({
+      rootDir: tmpDir,
+      scanDirs: [tmpDir],
+      specsDir: "__tests__",
+    })
+    const casesByFile = new Map([
+      [
+        reported,
+        [
+          {
+            describes: [],
+            pageName: "",
+            specPath: reported,
+            specType: "unknown",
+            steps: [],
+            title: "reported one",
+          },
+        ],
+      ],
+    ])
+    const grouped = groupSpecs(
+      [reported, normalGap, helperGap],
+      resolved,
+      casesByFile
+    )
+    const flat = allCases(grouped).flatMap(([, c]) => c)
+
+    // The helper file yields exactly one placeholder, flagged emptyFallback.
+    const placeholder = flat.find(
+      (c) => c.specPath === "__tests__/helper-gap.test.ts"
+    )
+    assert.equal(placeholder?.emptyFallback, true)
+
+    const md = renderApp("app", grouped, { outputDir: tmpDir })
+
+    // Total counts real tests only (reported + normal-gap = 2), not the placeholder.
+    assert.match(md, /\*\*2 tests\*\*/)
+
+    // Every fallback file is marked — including the zero-case one.
+    const normalMarks = (
+      md.match(/text-parsed \(not reported by the runner\)/g) ?? []
+    ).length
+    const emptyMarks = (
+      md.match(/text-parsed, the parser found no tests in this file/g) ?? []
+    ).length
+    assert.equal(normalMarks, 1) // normal-gap
+    assert.equal(emptyMarks, 1) // helper-gap
+    assert.match(
+      md,
+      /helper-gap\.test\.ts`\].*the parser found no tests in this file/
+    )
+    // The helper-gap group renders as 0 tests, but says why.
+    assert.match(md, /<strong>helper-gap<\/strong> \(0 tests\)/)
+  })
 })
 
 describe("generateAppMarkdown", () => {
