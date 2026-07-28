@@ -13,8 +13,10 @@ import { afterEach, beforeEach, describe, test } from "node:test"
 import {
   discoveryResultsToCases,
   NAME_SEPARATOR,
+  reconcileDiscovery,
   runDiscovery,
 } from "../src/discovery.js"
+import type { TestCase } from "../src/parser.js"
 import type { DiscoveryResult } from "../src/plugin.js"
 import {
   buildAdapterArgs,
@@ -115,6 +117,53 @@ describe("discoveryResultsToCases", () => {
     const cases = byFile.get("/a.ts")
     assert.equal(cases?.[0]?.modifier, "skip")
     assert.equal(cases?.[1]?.modifier, undefined)
+  })
+})
+
+describe("reconcileDiscovery", () => {
+  const cases = (): TestCase[] => [
+    { describes: [], pageName: "", specPath: "", specType: "", steps: [], title: "t" },
+  ]
+  const byFiles = (...files: string[]): Map<string, TestCase[]> =>
+    new Map(files.map((f) => [f, cases()]))
+
+  test("adapter is the source of truth — its files are the spec set", () => {
+    // Adapter narrower than include (Case A): include has 3, adapter has 1.
+    const rec = reconcileDiscovery(
+      ["/r/a.test.ts", "/r/b.test.ts", "/r/c.test.ts"],
+      byFiles("/r/a.test.ts"),
+      "skip"
+    )
+    assert.deepEqual(rec.specFiles, ["/r/a.test.ts"])
+    assert.deepEqual(rec.skipped, ["/r/b.test.ts", "/r/c.test.ts"])
+    assert.deepEqual(rec.fellBack, [])
+  })
+
+  test("adapter wider than include still wins — no false mismatch (Case B)", () => {
+    // Adapter reports 3, include narrowed to 1 (a subset of reported).
+    const rec = reconcileDiscovery(
+      ["/r/a.test.ts"],
+      byFiles("/r/a.test.ts", "/r/b.test.ts", "/r/c.test.ts"),
+      "skip"
+    )
+    assert.deepEqual(rec.specFiles, [
+      "/r/a.test.ts",
+      "/r/b.test.ts",
+      "/r/c.test.ts",
+    ])
+    assert.deepEqual(rec.skipped, [])
+    assert.deepEqual(rec.fellBack, [])
+  })
+
+  test("fallback: 'parse' keeps the gap but records it as fellBack", () => {
+    const rec = reconcileDiscovery(
+      ["/r/a.test.ts", "/r/b.test.ts"],
+      byFiles("/r/a.test.ts"),
+      "parse"
+    )
+    assert.deepEqual(rec.specFiles, ["/r/a.test.ts", "/r/b.test.ts"])
+    assert.deepEqual(rec.fellBack, ["/r/b.test.ts"])
+    assert.deepEqual(rec.skipped, [])
   })
 })
 

@@ -77,6 +77,22 @@ export interface PlaywrightDiscovery {
   configPath?: string
 }
 
+// Controls how discovery results reconcile with the `include` glob when a
+// discovery adapter is active. The adapter is the source of truth: a file it
+// did not report is never silently text-parsed into the document.
+export interface DiscoveryOptions {
+  // What to do with files that `include` matched but the adapter did not report.
+  // - `'skip'` (default): leave them out. The adapter's list is the document.
+  // - `'parse'`: text-parse them as a fallback, marked in the output as not
+  //   coming from the runner.
+  // Either way the CLI prints the mismatching files and how to fix it.
+  fallback?: "parse" | "skip"
+
+  // When true, any such mismatch makes the run exit non-zero — pairs with a CI
+  // freshness check.
+  strict?: boolean
+}
+
 export interface CollectTestCasesConfig {
   // App name shown in the generated README heading and used by the
   // grouper. When omitted, the directory containing the config file
@@ -89,6 +105,10 @@ export interface CollectTestCasesConfig {
   // Glob patterns excluded from discovery, applied after `include`.
   // @default ['**/node_modules/**', '**/.git/**', '**/__screenshots__/**']
   exclude?: string[]
+
+  // Reconciliation behaviour when a discovery adapter is active. See
+  // `DiscoveryOptions`. Ignored when no adapter (plugin `discover()`) runs.
+  discovery?: DiscoveryOptions
 
   // Glob patterns used to discover spec files.
   // @default ['**/__checks__/**/*.spec.ts']
@@ -157,6 +177,7 @@ export interface CollectTestCasesConfig {
 export interface ResolvedConfig {
   appName: string
   browserToOs: Record<string, string>
+  discovery: Required<DiscoveryOptions>
   exclude: string[]
   include: string[]
   outputPath: string
@@ -216,6 +237,10 @@ export const applyConfigDefaults = (
   return {
     appName,
     browserToOs: user?.browserToOs ?? { ...DEFAULT_BROWSER_TO_OS },
+    discovery: {
+      fallback: user?.discovery?.fallback ?? "skip",
+      strict: user?.discovery?.strict ?? false,
+    },
     exclude: user?.exclude ?? [...DEFAULT_EXCLUDE],
     include: user?.include ?? [...DEFAULT_INCLUDE],
     outputPath,

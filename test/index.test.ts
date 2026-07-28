@@ -725,6 +725,93 @@ describe.each(["a"])("describe.each %s", () => {
     const child = cases.find((c) => c.title === "inside describe.each")
     assert.deepEqual(child?.describes, ["describe.each %s"])
   })
+
+  // One table for every recognised call form — adding a form is one line.
+  const FORMS: {
+    expected: { modifier?: string; title: string }[]
+    name: string
+    src: string
+  }[] = [
+    { expected: [{ title: "plain" }], name: "it()", src: `it("plain", () => {})` },
+    {
+      expected: [{ title: "plain" }],
+      name: "test()",
+      src: `test("plain", () => {})`,
+    },
+    {
+      expected: [{ modifier: "skip", title: "s" }],
+      name: "it.skip()",
+      src: `it.skip("s", () => {})`,
+    },
+    {
+      expected: [{ modifier: "only", title: "o" }],
+      name: "it.only()",
+      src: `it.only("o", () => {})`,
+    },
+    {
+      expected: [{ modifier: "todo", title: "t" }],
+      name: "it.todo()",
+      src: `it.todo("t")`,
+    },
+    {
+      expected: [{ title: "c" }],
+      name: "it.concurrent()",
+      src: `it.concurrent("c", () => {})`,
+    },
+    {
+      expected: [{ title: "sq" }],
+      name: "it.sequential()",
+      src: `it.sequential("sq", () => {})`,
+    },
+    {
+      expected: [{ title: "each %s" }],
+      name: "it.each()()",
+      src: `it.each([1, 2])("each %s", () => {})`,
+    },
+    {
+      expected: [{ title: "for %s" }],
+      name: "it.for()()",
+      src: `it.for([1, 2])("for %s", () => {})`,
+    },
+    {
+      expected: [{ title: "skipIf x" }],
+      name: "it.skipIf(x)()",
+      src: `it.skipIf(true)("skipIf x", () => {})`,
+    },
+    {
+      expected: [{ title: "runIf x" }],
+      name: "it.runIf(x)()",
+      src: `it.runIf(true)("runIf x", () => {})`,
+    },
+    {
+      expected: [{ modifier: "skip", title: "se %s" }],
+      name: "it.skip.each()()",
+      src: `it.skip.each([1])("se %s", () => {})`,
+    },
+    {
+      expected: [{ title: "ext" }],
+      name: "test.extend({})()",
+      src: `test.extend({})("ext", () => {})`,
+    },
+    {
+      expected: [{ title: "child" }],
+      name: "describe.each()()",
+      src: `describe.each(["a"])("d %s", () => { it("child", () => {}) })`,
+    },
+  ]
+
+  for (const form of FORMS) {
+    test(`parses form ${form.name}`, () => {
+      const cases = parseSpecFile(writeTmp(`form-${form.name.replace(/\W+/g, "_")}.spec.ts`, form.src))
+      assert.deepEqual(
+        cases.map((c) => ({
+          ...(c.modifier ? { modifier: c.modifier } : {}),
+          title: c.title,
+        })),
+        form.expected
+      )
+    })
+  }
 })
 
 describe("layout-derived resolvers", () => {
@@ -1144,6 +1231,49 @@ describe("groupSpecs page names & discovery cases", () => {
     assert.equal(cases?.length, 1)
     assert.equal(cases?.[0]?.title, "helper test")
     assert.deepEqual(cases?.[0]?.describes, ["outer"])
+  })
+
+  test("marks text-parsed cases as fallback when discovery is active", () => {
+    mkdirSync(join(tmpDir, "__tests__"), { recursive: true })
+    const reported = join(tmpDir, "__tests__/reported.test.ts")
+    const gap = join(tmpDir, "__tests__/gap.test.ts")
+    writeFileSync(reported, "test('reported one', () => {})")
+    writeFileSync(gap, "test('gap one', () => {})")
+
+    const resolved = applyConfigDefaults({
+      rootDir: tmpDir,
+      scanDirs: [tmpDir],
+      specsDir: "__tests__",
+    })
+    // The adapter reported only `reported`; `gap` is the text-parsed fallback.
+    const casesByFile = new Map([
+      [
+        reported,
+        [
+          {
+            describes: [],
+            pageName: "",
+            specPath: reported,
+            specType: "unknown",
+            steps: [],
+            title: "reported one",
+          },
+        ],
+      ],
+    ])
+    const grouped = groupSpecs([reported, gap], resolved, casesByFile)
+    const flat = allCases(grouped).flatMap(([, c]) => c)
+    const byTitle = new Map(flat.map((c) => [c.title, c]))
+    assert.equal(byTitle.get("reported one")?.fallback, undefined)
+    assert.equal(byTitle.get("gap one")?.fallback, true)
+
+    // And the renderer flags the fallback spec's file link.
+    const md = renderApp("app", grouped, { outputDir: tmpDir })
+    assert.match(md, /gap\.test\.ts`\].*text-parsed \(not reported by the runner\)/)
+    assert.doesNotMatch(
+      md,
+      /reported\.test\.ts`\].*text-parsed/
+    )
   })
 })
 

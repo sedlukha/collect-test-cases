@@ -224,7 +224,15 @@ export const groupSpecs = (
     const userPageName = config.resolvePageName?.(absPath, root) ?? null
     const pageName =
       userPageName ?? checksSubfolder ?? specFile.split(".")[0] ?? specFile
-    const cases = casesByFile?.get(absPath) ?? parseSpecFile(absPath)
+    // A file the adapter reported uses its cases verbatim. A file NOT in the
+    // discovery result while discovery is active is a text-parsed fallback —
+    // mark it so the renderer can flag that it didn't come from the runner.
+    const discovered = casesByFile?.get(absPath)
+    const cases =
+      discovered ??
+      (casesByFile
+        ? parseSpecFile(absPath).map((c) => ({ ...c, fallback: true }))
+        : parseSpecFile(absPath))
     const casesWithPath = cases.map((c) => ({
       ...c,
       pageName,

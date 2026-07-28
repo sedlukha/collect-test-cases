@@ -1,9 +1,10 @@
 import { mkdirSync, writeFileSync } from "node:fs"
-import { dirname } from "node:path"
+import { dirname, relative } from "node:path"
 
 import { loadConfig } from "./config.js"
 import {
   discoveryResultsToCases,
+  reconcileDiscovery,
   runDiscovery,
 } from "./discovery.js"
 import { collectSpecFiles, groupSpecs } from "./grouper.js"
@@ -32,13 +33,53 @@ export type {
   DiscoveryResult,
   PluginInitContext,
 } from "./plugin.js"
+export type { DiscoveryReconciliation } from "./discovery.js"
 export {
   discoveryResultsToCases,
   NAME_SEPARATOR,
+  reconcileDiscovery,
   runDiscovery,
 } from "./discovery.js"
 export type { AppDomains } from "./renderer.js"
 export { generateAppMarkdown } from "./renderer.js"
+
+// Emits the stdout diagnostic (and, in strict mode, throws) for files that
+// `include` matched but a discovery adapter did not report. A silent mismatch
+// is exactly the failure this tool exists to remove — so it is always printed.
+const reportDiscoveryMismatch = (
+  rec: {
+    fellBack: string[]
+    skipped: string[]
+  },
+  root: string,
+  strict: boolean
+): void => {
+  const files = rec.skipped.length > 0 ? rec.skipped : rec.fellBack
+
+  if (files.length === 0) {
+    return
+  }
+
+  const fellBack = rec.fellBack.length > 0
+  const shown = files.slice(0, 10).map((f) => `  ${relative(root, f)}`)
+  const more = files.length - shown.length
+  const tail = fellBack
+    ? "  These files were text-parsed as a fallback and marked in the output. Widen the adapter scope or narrow `include`."
+    : "  These files were skipped. Widen the adapter scope or narrow `include`."
+
+  const message = [
+    `[collect-test-cases] ${files.length} file(s) matched \`include\` but were not reported by the discovery adapter${fellBack ? "" : " (skipped)"}:`,
+    ...shown,
+    ...(more > 0 ? [`  … (${more} more)`] : []),
+    tail,
+  ].join("\n")
+
+  if (strict) {
+    throw new Error(message)
+  }
+
+  console.warn(message)
+}
 
 // Runs the full collect-test-cases pipeline: loads the nearest config
 // file, discovers spec files, runs plugin `init` hooks, groups specs,
@@ -57,13 +98,23 @@ export const run = async (): Promise<void> => {
     ? discoveryResultsToCases(discovered, config.rootDir)
     : undefined
 
-  // Discovered files are unioned with globbed ones: a discovery adapter may
-  // report tests in files a glob can't reach (or vice versa). Files present in
-  // both use the discovered cases (see `groupSpecs`).
   const globbed = collectSpecFiles(config)
-  const specFiles = casesByFile
-    ? [...new Set([...globbed, ...casesByFile.keys()])].sort()
-    : globbed
+
+  // When an adapter is active it is the source of truth: its files are the
+  // document. Files `include` matched but the adapter did not report are either
+  // skipped (default) or text-parsed as a marked fallback — never silently
+  // merged. See `reconcileDiscovery`.
+  let specFiles = globbed
+
+  if (casesByFile) {
+    const rec = reconcileDiscovery(
+      globbed,
+      casesByFile,
+      config.discovery.fallback
+    )
+    specFiles = rec.specFiles
+    reportDiscoveryMismatch(rec, config.rootDir, config.discovery.strict)
+  }
 
   if (specFiles.length === 0) {
     console.warn(

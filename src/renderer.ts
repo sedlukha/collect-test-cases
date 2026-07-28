@@ -213,10 +213,19 @@ const renderPageCases = (
       lines.push("")
 
       const specPaths = [...new Set(typeCases.map((tc) => tc.specPath))]
+      // A spec is a fallback when its cases were text-parsed while a discovery
+      // adapter was active — flag it so the reader knows it isn't the runner's
+      // answer for that file.
+      const fallbackSpecs = new Set(
+        typeCases.filter((tc) => tc.fallback).map((tc) => tc.specPath)
+      )
 
       for (const sp of specPaths) {
         const link = toRelLink(sp, root, outputDir)
-        lines.push(`📄 [\`${sp}\`](${link})`)
+        const marker = fallbackSpecs.has(sp)
+          ? " — ⚠️ text-parsed (not reported by the runner)"
+          : ""
+        lines.push(`📄 [\`${sp}\`](${link})${marker}`)
         lines.push("")
       }
 
