@@ -139,6 +139,7 @@ The config is a plain ESM module exporting one object. All fields are optional u
 | `screenshotsDir`  | `string`                          | `'__screenshots__'`                  | Subfolder name where screenshot PNGs live.                                                                                 |
 | `browserToOs`     | `Record<string, string>`          | `{ 'Desktop-Chrome': 'ubuntu', 'Desktop-Safari': 'macOS' }` | Playwright project name → display OS name. Drives screenshot gallery rows.                                                 |
 | `specTypes`       | `Record<string, SpecTypeDefinition>` | `{ default: { label: 'Tests', order: 0 } }` | Spec-type categories. See [Spec types](#spec-types).                                                                       |
+| `discovery`       | `{ fallback?, strict? }`          | `{ fallback: 'skip', strict: false }` | How adapter results reconcile with `include`. See [The adapter is the source of truth](#the-adapter-is-the-source-of-truth). |
 | `layout`          | `MonorepoLayout`                  | —                                    | Declarative monorepo layout — see [Monorepo layout](#monorepo-layout).                                                     |
 | `resolveApp`      | `(absPath, root) => …`            | from `layout` if set, else include all | Escape-hatch override for "does this spec belong to this app?".                                                            |
 | `resolveDomain`   | `(absPath, root) => string`       | from `layout` if set, else `''`      | Returns the outermost grouping label.                                                                                      |
@@ -297,6 +298,38 @@ const myRunner = {
   ],
 }
 ```
+
+### The adapter is the source of truth
+
+Once a discovery adapter is active, **the runner's list is the document** — the whole point is that a text parser can't see every test, so mixing the two would put two quality levels under one total. So:
+
+- A file the adapter reports is taken from the adapter.
+- A file the adapter reports but `include` does **not** match is still included — the adapter wins.
+- A file `include` matches but the adapter does **not** report is **not** silently text-parsed. By default it is left out, and the CLI prints exactly which files, with a count and how to fix it:
+
+```
+[collect-test-cases] 5 file(s) matched `include` but were not reported by the discovery adapter (skipped):
+  src/pages/a/x.test.ts
+  … (4 more)
+  These files were skipped. Widen the adapter scope or narrow `include`.
+```
+
+This means once an adapter is active, `include` is a *filter over what the runner reports*, not an independent second source. A mismatch usually means the runner's scope and `include` are out of step — a `--dir` / `--project` / `--shard` flag on the adapter, a runner config with its own `testDir`, or a file the runner failed to load.
+
+Tune the behaviour with the `discovery` option:
+
+```js
+export default {
+  appName: "myapp",
+  plugins: [vitestDiscovery()],
+  discovery: {
+    fallback: "skip", // 'skip' (default) drops unreported files; 'parse' text-parses them, marked in the output
+    strict: false,    // true → a mismatch exits non-zero (pairs with a CI check)
+  },
+}
+```
+
+With `fallback: "parse"` the unreported files are still parsed, but each is flagged in the output (`⚠️ text-parsed (not reported by the runner)`) so no group silently claims to be the runner's answer.
 
 ### What runtime mode gives up
 

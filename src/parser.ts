@@ -5,6 +5,10 @@ import ts from "typescript"
 
 export interface TestCase {
   describes: string[]
+  // True when this case was text-parsed as a fallback while a discovery adapter
+  // was active (the runner did not report the file). The renderer marks it so a
+  // reader can see the case did not come from the runner. `undefined` otherwise.
+  fallback?: boolean
   // Captured when the call carried a modifier (`test.skip('foo', ...)` →
   // `'skip'`). `undefined` for plain `test()`/`it()`.
   modifier?: "fail" | "fixme" | "only" | "skip" | "slow" | "todo"

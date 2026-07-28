@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Cart totals > sums line items",
+    "file": "/Users/artur/code/sedlukha/collect-test-cases/test/fixtures/vitest-suite/cart.test.ts"
+  },
+  {
+    "name": "Cart totals > applies discount code",
+    "file": "/Users/artur/code/sedlukha/collect-test-cases/test/fixtures/vitest-suite/cart.test.ts"
+  },
+  {
+    "name": "Checkout > accepts Visa",
+    "file": "/Users/artur/code/sedlukha/collect-test-cases/test/fixtures/vitest-suite/checkout.test.ts"
+  },
+  {
+    "name": "Checkout > accepts Mastercard",
+    "file": "/Users/artur/code/sedlukha/collect-test-cases/test/fixtures/vitest-suite/checkout.test.ts"
+  },
+  {
+    "name": "Checkout > accepts Amex",
+    "file": "/Users/artur/code/sedlukha/collect-test-cases/test/fixtures/vitest-suite/checkout.test.ts"
+  },
+  {
+    "name": "Checkout > shows the order summary",
+    "file": "/Users/artur/code/sedlukha/collect-test-cases/test/fixtures/vitest-suite/checkout.test.ts"
+  },
+  {
+    "name": "row a > has a value",
+    "file": "/Users/artur/code/sedlukha/collect-test-cases/test/fixtures/vitest-suite/matrix.test.ts"
+  },
+  {
+    "name": "row b > has a value",
+    "file": "/Users/artur/code/sedlukha/collect-test-cases/test/fixtures/vitest-suite/matrix.test.ts"
+  },
+  {
+    "name": "Statuses > normal one",
+    "file": "/Users/artur/code/sedlukha/collect-test-cases/test/fixtures/vitest-suite/status.test.ts"
+  }
+]

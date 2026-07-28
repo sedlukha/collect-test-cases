@@ -79,6 +79,47 @@ export const discoveryResultsToCases = (
   return byFile
 }
 
+// The outcome of reconciling the `include` glob against a discovery adapter's
+// reported files. The adapter is the source of truth.
+export interface DiscoveryReconciliation {
+  // Files matched by `include` but not reported by the adapter, that were
+  // text-parsed as a fallback (only in `fallback: 'parse'` mode).
+  fellBack: string[]
+  // Files matched by `include` but not reported by the adapter, that were left
+  // out entirely (default `fallback: 'skip'` mode).
+  skipped: string[]
+  // The files to actually group and render.
+  specFiles: string[]
+}
+
+// Reconciles the glob result with the adapter's reported files. The adapter is
+// authoritative: its files are always the spec set. Files `include` matched but
+// the adapter did not report are either skipped (default) or text-parsed as a
+// marked fallback. Files the adapter reported that `include` did not match are
+// still included — the adapter wins in both directions.
+export const reconcileDiscovery = (
+  globbed: string[],
+  casesByFile: Map<string, TestCase[]>,
+  fallback: "parse" | "skip"
+): DiscoveryReconciliation => {
+  const reported = new Set(casesByFile.keys())
+  const includedNotReported = globbed.filter((f) => !reported.has(f)).sort()
+
+  if (fallback === "parse") {
+    return {
+      fellBack: includedNotReported,
+      skipped: [],
+      specFiles: [...new Set([...reported, ...globbed])].sort(),
+    }
+  }
+
+  return {
+    fellBack: [],
+    skipped: includedNotReported,
+    specFiles: [...reported].sort(),
+  }
+}
+
 // Runs every plugin `discover()` hook and merges the results. Returns `null`
 // when no plugin implements the hook or none produced any tests, so callers can
 // fall back to text parsing.
