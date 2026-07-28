@@ -1,5 +1,11 @@
 import assert from "node:assert/strict"
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, test } from "node:test"
@@ -11,6 +17,7 @@ import {
 } from "../src/discovery.js"
 import type { DiscoveryResult } from "../src/plugin.js"
 import {
+  buildAdapterArgs,
   jestDiscovery,
   playwrightDiscovery,
   vitestDiscovery,
@@ -38,6 +45,30 @@ const writeFakeCli = (name: string, stdout: string): string => {
 
   return p
 }
+
+// Writes a fake CLI that records the argv it received to `argvFile` (JSON) and
+// then prints `stdout`. Lets a test assert the exact command a spawned adapter
+// built, end-to-end.
+const writeArgvRecorderCli = (
+  name: string,
+  argvFile: string,
+  stdout: string
+): string => {
+  const p = join(tmpDir, name)
+  writeFileSync(
+    p,
+    `#!/usr/bin/env node\n` +
+      `import { writeFileSync } from "node:fs"\n` +
+      `writeFileSync(${JSON.stringify(argvFile)}, JSON.stringify(process.argv.slice(2)))\n` +
+      `process.stdout.write(${JSON.stringify(stdout)})\n`
+  )
+  chmodSync(p, 0o755)
+
+  return p
+}
+
+const readArgv = (argvFile: string): string[] =>
+  JSON.parse(readFileSync(argvFile, "utf-8")) as string[]
 
 describe("discoveryResultsToCases", () => {
   test("splits a flat ' > ' name into describes + title", () => {
@@ -144,8 +175,82 @@ describe("vitestDiscovery adapter", () => {
   })
 })
 
+describe("buildAdapterArgs", () => {
+  test("commandArgs lead, then list args, then configPath, then trailing args", () => {
+    assert.deepEqual(
+      buildAdapterArgs(["list", "--json"], {
+        args: ["--project", "unit"],
+        commandArgs: ["vitest"],
+        configPath: "vitest.config.ts",
+      }),
+      [
+        "vitest",
+        "list",
+        "--json",
+        "--config",
+        "vitest.config.ts",
+        "--project",
+        "unit",
+      ]
+    )
+  })
+
+  test("no options → just the built-in list args", () => {
+    assert.deepEqual(buildAdapterArgs(["list", "--json"], {}), [
+      "list",
+      "--json",
+    ])
+  })
+})
+
+describe("adapter argument order (end-to-end)", () => {
+  const argvFile = () => join(tmpDir, "argv.json")
+
+  test("vitest: `npx vitest list --json` via commandArgs (README example)", () => {
+    const cli = writeArgvRecorderCli("rec-vitest.mjs", argvFile(), "[]")
+    vitestDiscovery({ command: cli, commandArgs: ["vitest"] }).discover?.({
+      root: tmpDir,
+    })
+    assert.deepEqual(readArgv(argvFile()), ["vitest", "list", "--json"])
+  })
+
+  test("jest (default collect): `--collectTests --json`, no test bodies", () => {
+    const cli = writeArgvRecorderCli(
+      "rec-jest.mjs",
+      argvFile(),
+      '{"testResults":[]}'
+    )
+    jestDiscovery({ command: cli }).discover?.({ root: tmpDir })
+    assert.deepEqual(readArgv(argvFile()), ["--collectTests", "--json"])
+  })
+
+  test("jest run mode: plain `--json`", () => {
+    const cli = writeArgvRecorderCli(
+      "rec-jest-run.mjs",
+      argvFile(),
+      '{"testResults":[]}'
+    )
+    jestDiscovery({ command: cli, mode: "run" }).discover?.({ root: tmpDir })
+    assert.deepEqual(readArgv(argvFile()), ["--json"])
+  })
+
+  test("playwright: `test --list --reporter=json`", () => {
+    const cli = writeArgvRecorderCli(
+      "rec-pw.mjs",
+      argvFile(),
+      '{"suites":[]}'
+    )
+    playwrightDiscovery({ command: cli }).discover?.({ root: tmpDir })
+    assert.deepEqual(readArgv(argvFile()), [
+      "test",
+      "--list",
+      "--reporter=json",
+    ])
+  })
+})
+
 describe("jestDiscovery adapter", () => {
-  test("parses standard `jest --json` assertionResults with statuses", () => {
+  test("run mode maps real statuses to modifiers", () => {
     const jestJson = JSON.stringify({
       testResults: [
         {
@@ -158,13 +263,36 @@ describe("jestDiscovery adapter", () => {
         },
       ],
     })
-    const cli = writeFakeCli("fake-jest.mjs", jestJson)
-    const plugin = jestDiscovery({ command: cli })
-    const results = plugin.discover?.({ root: tmpDir })
+    const cli = writeFakeCli("fake-jest-run.mjs", jestJson)
+    const results = jestDiscovery({ command: cli, mode: "run" }).discover?.({
+      root: tmpDir,
+    })
     assert.deepEqual(results, [
       { file: `${tmpDir}/a.test.ts`, name: "Suite > does x" },
       { file: `${tmpDir}/a.test.ts`, modifier: "skip", name: "Suite > skips y" },
       { file: `${tmpDir}/a.test.ts`, modifier: "todo", name: "todo z" },
+    ])
+  })
+
+  test("collect mode (default) ignores statuses — every test is plain", () => {
+    // `--collectTests` reports every test as `pending`; the adapter must not
+    // turn that into a skip icon.
+    const collectJson = JSON.stringify({
+      testResults: [
+        {
+          assertionResults: [
+            { ancestorTitles: ["Suite"], status: "pending", title: "a" },
+            { ancestorTitles: ["Suite"], status: "pending", title: "b" },
+          ],
+          testFilePath: `${tmpDir}/a.test.ts`,
+        },
+      ],
+    })
+    const cli = writeFakeCli("fake-jest-collect.mjs", collectJson)
+    const results = jestDiscovery({ command: cli }).discover?.({ root: tmpDir })
+    assert.deepEqual(results, [
+      { file: `${tmpDir}/a.test.ts`, name: "Suite > a" },
+      { file: `${tmpDir}/a.test.ts`, name: "Suite > b" },
     ])
   })
 })

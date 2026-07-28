@@ -8,16 +8,35 @@ import type {
 
 // Shared options for a runner-backed discovery adapter.
 export interface DiscoveryAdapterOptions {
-  // Extra CLI arguments appended after the adapter's default list command.
+  // Extra CLI arguments appended AFTER the adapter's built-in list arguments —
+  // for runner flags (e.g. `['--project', 'unit']`).
   args?: string[]
   // Executable to run. Defaults to the runner's own name (e.g. `'vitest'`),
   // resolved on PATH. Pass an absolute path to pin a specific binary.
   command?: string
+  // Arguments inserted BEFORE the adapter's built-in list arguments. Use this
+  // when `command` is a launcher and the runner name is its first argument:
+  // `{ command: 'npx', commandArgs: ['vitest'] }` builds `npx vitest list --json`.
+  commandArgs?: string[]
   // Working directory for the spawned process. Defaults to `ctx.root`.
   cwd?: string
   // Path to the runner config, passed through as `--config <path>`.
   configPath?: string
 }
+
+// Assembles the full argument list for a spawned runner:
+//   [...commandArgs, ...listArgs, --config <path>?, ...args]
+// `commandArgs` lead (so `npx vitest …` works); `args` trail (so an existing
+// config that only sets `args` keeps its current behaviour).
+export const buildAdapterArgs = (
+  listArgs: string[],
+  options: DiscoveryAdapterOptions
+): string[] => [
+  ...(options.commandArgs ?? []),
+  ...listArgs,
+  ...(options.configPath ? ["--config", options.configPath] : []),
+  ...(options.args ?? []),
+]
 
 const MAX_BUFFER = 64 * 1024 * 1024
 
@@ -87,13 +106,7 @@ export const vitestDiscovery = (
 ): CollectTestCasesPlugin => ({
   discover: ({ root }) => {
     const command = options.command ?? "vitest"
-    const args = ["list", "--json"]
-
-    if (options.configPath) {
-      args.push("--config", options.configPath)
-    }
-
-    args.push(...(options.args ?? []))
+    const args = buildAdapterArgs(["list", "--json"], options)
 
     const { error, stdout } = runList(command, args, options.cwd ?? root)
     const json = extractJson(stdout)
@@ -119,11 +132,24 @@ export const vitestDiscovery = (
 })
 
 // ---------------------------------------------------------------------------
-// Jest — Jest has no pure "list names" command, so this parses the standard
-// `jest --json` result shape (`testResults[].assertionResults[]`). Each
-// assertion carries `ancestorTitles` + `title` + `status`; `pending`/`skipped`
-// map to the skip icon, `todo` to the todo icon.
+// Jest — two modes, both parsing the standard `assertionResults` shape:
+//
+//   'collect' (default): `jest --collectTests --json` loads each file and
+//     registers its tests without executing any test body or lifecycle hook,
+//     then exits. Safe and fast for doc generation — but every test is reported
+//     with `status: 'pending'`, so no real skip/todo icons are available.
+//     Requires Jest >= 30 (the `--collectTests` flag was added there).
+//
+//   'run': `jest --json` runs the whole suite. Slower, and side effects really
+//     happen, but the finished run reports true statuses, so skip/todo icons
+//     work. Opt in with `jestDiscovery({ mode: 'run' })`.
 // ---------------------------------------------------------------------------
+export interface JestDiscoveryOptions extends DiscoveryAdapterOptions {
+  // 'collect' (default) never runs test bodies (needs Jest >= 30). 'run'
+  // executes the suite to recover real skip/todo statuses.
+  mode?: "collect" | "run"
+}
+
 interface JestAssertion {
   ancestorTitles?: string[]
   status?: string
@@ -151,17 +177,15 @@ const jestModifier = (status?: string): string | undefined => {
 }
 
 export const jestDiscovery = (
-  options: DiscoveryAdapterOptions = {}
+  options: JestDiscoveryOptions = {}
 ): CollectTestCasesPlugin => ({
   discover: ({ root }) => {
     const command = options.command ?? "jest"
-    const args = ["--json"]
-
-    if (options.configPath) {
-      args.push("--config", options.configPath)
-    }
-
-    args.push(...(options.args ?? []))
+    // Collection-only mode reports every test as `pending`, so its statuses are
+    // meaningless — only the run mode yields real modifiers.
+    const runMode = options.mode === "run"
+    const listArgs = runMode ? ["--json"] : ["--collectTests", "--json"]
+    const args = buildAdapterArgs(listArgs, options)
 
     const { error, stdout } = runList(command, args, options.cwd ?? root)
     const json = extractJson(stdout) as JestJson | undefined
@@ -190,7 +214,7 @@ export const jestDiscovery = (
         const name = [...(assertion.ancestorTitles ?? []), assertion.title].join(
           NAME_SEPARATOR
         )
-        const modifier = jestModifier(assertion.status)
+        const modifier = runMode ? jestModifier(assertion.status) : undefined
 
         results.push(modifier ? { file, modifier, name } : { file, name })
       }
@@ -225,13 +249,10 @@ export const playwrightDiscovery = (
 ): CollectTestCasesPlugin => ({
   discover: ({ root }) => {
     const command = options.command ?? "playwright"
-    const args = ["test", "--list", "--reporter=json"]
-
-    if (options.configPath) {
-      args.push("--config", options.configPath)
-    }
-
-    args.push(...(options.args ?? []))
+    const args = buildAdapterArgs(
+      ["test", "--list", "--reporter=json"],
+      options
+    )
 
     const { error, stdout } = runList(command, args, options.cwd ?? root)
     const json = extractJson(stdout) as PlaywrightJson | undefined
