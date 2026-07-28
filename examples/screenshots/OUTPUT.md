@@ -14,11 +14,6 @@ _Auto-generated. Do not edit manually._
 
 <blockquote>
 
-<details>
-<summary><strong>📸 Visual</strong> (1 tests)</summary>
-
-<blockquote>
-
 📄 [`__checks__/home-page/home-page.screenshot.spec.ts`](./__checks__/home-page/home-page.screenshot.spec.ts)
 
 <details>
@@ -36,16 +31,8 @@ _Auto-generated. Do not edit manually._
 </blockquote>
 
 </details>
-<details>
-<summary>☑️ matches the hero section snapshot</summary>
 
-
-</details>
-
-
-</blockquote>
-
-</details>
+- ☑️ matches the hero section snapshot
 
 </blockquote>
 

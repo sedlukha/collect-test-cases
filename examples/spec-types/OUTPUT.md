@@ -21,18 +21,8 @@ _Auto-generated. Do not edit manually._
 
 📄 [`__checks__/checkout-page/checkout-page.guest.spec.ts`](./__checks__/checkout-page/checkout-page.guest.spec.ts)
 
-<details>
-<summary>☑️ anonymous user sees the shipping form</summary>
-
-
-</details>
-
-<details>
-<summary>☑️ anonymous user can place an order</summary>
-
-
-</details>
-
+- ☑️ anonymous user sees the shipping form
+- ☑️ anonymous user can place an order
 
 </blockquote>
 
@@ -45,18 +35,8 @@ _Auto-generated. Do not edit manually._
 
 📄 [`__checks__/checkout-page/checkout-page.auth.spec.ts`](./__checks__/checkout-page/checkout-page.auth.spec.ts)
 
-<details>
-<summary>☑️ pre-fills the saved address</summary>
-
-
-</details>
-
-<details>
-<summary>☑️ supports applying a stored payment method</summary>
-
-
-</details>
-
+- ☑️ pre-fills the saved address
+- ☑️ supports applying a stored payment method
 
 </blockquote>
 
@@ -69,12 +49,7 @@ _Auto-generated. Do not edit manually._
 
 📄 [`__checks__/checkout-page/checkout-page.smoke.spec.ts`](./__checks__/checkout-page/checkout-page.smoke.spec.ts)
 
-<details>
-<summary>☑️ the /checkout page returns 200 OK</summary>
-
-
-</details>
-
+- ☑️ the /checkout page returns 200 OK
 
 </blockquote>
 

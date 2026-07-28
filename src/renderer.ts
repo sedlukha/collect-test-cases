@@ -152,26 +152,145 @@ const renderDescribeLevel = (
   }
 
   for (const tc of directCases) {
+    // A test with no steps has nothing to reveal — render it as a plain list
+    // item instead of a collapsible box holding empty space. The `<details>`
+    // form is kept only when there are steps (Playwright) to show.
+    if (tc.steps.length === 0) {
+      lines.push(`- ${iconForModifier(tc.modifier)} ${resolve(tc.title)}`)
+      continue
+    }
+
     lines.push("<details>")
     lines.push(
       `<summary>${iconForModifier(tc.modifier)} ${resolve(tc.title)}</summary>`
     )
     lines.push("")
+    lines.push("<blockquote>")
+    lines.push("")
 
-    if (tc.steps.length > 0) {
-      lines.push("<blockquote>")
-      lines.push("")
-
-      for (let i = 0; i < tc.steps.length; i += 1) {
-        lines.push(`${i + 1}. ${resolve(tc.steps[i] ?? "")}`)
-      }
-
-      lines.push("")
-      lines.push("</blockquote>")
+    for (let i = 0; i < tc.steps.length; i += 1) {
+      lines.push(`${i + 1}. ${resolve(tc.steps[i] ?? "")}`)
     }
 
     lines.push("")
+    lines.push("</blockquote>")
+    lines.push("")
     lines.push("</details>")
+    lines.push("")
+  }
+}
+
+// Renders the 📸 gallery for one spec file, when it declares screenshots.
+const renderGallery = (
+  lines: string[],
+  specPathFromRoot: string,
+  sharedAcrossApps: boolean,
+  root: string,
+  outputDir: string,
+  config: ResolvedConfig,
+  appName: string,
+  screenshotLocales: string[]
+): void => {
+  const specDir = dirname(specPathFromRoot)
+  const specBasename = basename(specPathFromRoot)
+
+  const isFlat = basename(specDir) === config.specsDir
+  const screenshotsRelDir = isFlat
+    ? `${dirname(specDir)}/${config.screenshotsDir}/${specBasename}`
+    : `${specDir}/${config.screenshotsDir}/${specBasename}`
+  const screenshotsDirLink = toRelLink(screenshotsRelDir, root, outputDir)
+
+  const basenames = parseScreenshotBasenames(join(root, specPathFromRoot))
+
+  if (basenames.length === 0) {
+    return
+  }
+
+  // When a spec is shared across multiple apps, Playwright injects the app
+  // name into the screenshot filename: baseName-APPNAME-Browser---locale.png
+  const appNameInfix = sharedAcrossApps ? appName : ""
+
+  lines.push("<details>")
+  lines.push("<summary>📸 screenshots</summary>")
+  lines.push("")
+  lines.push("<blockquote>")
+  lines.push("")
+  renderScreenshotGallery(
+    lines,
+    basenames,
+    screenshotsDirLink,
+    config.browserToOs,
+    screenshotLocales,
+    appNameInfix
+  )
+  lines.push("</blockquote>")
+  lines.push("")
+  lines.push("</details>")
+  lines.push("")
+}
+
+// Renders every case of one spec type, with each file's link attached to the
+// tests that came from that file (rather than hoisted to the top of the group).
+const renderTypeSection = (
+  lines: string[],
+  typeCases: TestCase[],
+  hasGallery: boolean,
+  root: string,
+  outputDir: string,
+  config: ResolvedConfig,
+  resolveText: (text: string) => string,
+  appName: string,
+  screenshotLocales: string[]
+): void => {
+  // Strip the outer describe — it's always just the page wrapper.
+  const outerDescribes = new Set(typeCases.map((tc) => tc.describes[0]))
+  const stripOuter =
+    outerDescribes.size === 1 &&
+    outerDescribes.values().next().value !== undefined
+  const cases = stripOuter
+    ? typeCases.map((tc) => ({ ...tc, describes: tc.describes.slice(1) }))
+    : typeCases
+
+  // Group by spec file, keeping first-seen order, so each link sits with its
+  // own tests instead of floating to the top of the group.
+  const byFile = new Map<string, TestCase[]>()
+
+  for (const tc of cases) {
+    if (!byFile.has(tc.specPath)) {
+      byFile.set(tc.specPath, [])
+    }
+
+    byFile.get(tc.specPath)?.push(tc)
+  }
+
+  // The gallery is derived from a single spec file — attach it to that file.
+  const gallerySpec = typeCases[0]?.specPath ?? ""
+
+  for (const [specPath, fileCases] of byFile) {
+    const link = toRelLink(specPath, root, outputDir)
+    // A spec is a fallback when its cases were text-parsed while a discovery
+    // adapter was active — flag it so the reader knows it isn't the runner's
+    // answer for that file.
+    const marker = fileCases.some((tc) => tc.fallback)
+      ? " — ⚠️ text-parsed (not reported by the runner)"
+      : ""
+    lines.push(`📄 [\`${specPath}\`](${link})${marker}`)
+    lines.push("")
+
+    if (hasGallery && specPath === gallerySpec) {
+      renderGallery(
+        lines,
+        specPath,
+        fileCases[0]?.sharedAcrossApps ?? false,
+        root,
+        outputDir,
+        config,
+        appName,
+        screenshotLocales
+      )
+    }
+
+    renderDescribeLevel(lines, fileCases, resolveText)
     lines.push("")
   }
 }
@@ -207,11 +326,18 @@ const renderPageCases = (
     .sort(([, a], [, b]) => a.order - b.order)
     .map(([type]) => type)
 
-  for (const specType of specTypeOrder) {
-    const typeCases = realCases.filter((tc) => tc.specType === specType)
+  const typesInPlay = specTypeOrder.filter((specType) =>
+    realCases.some((tc) => tc.specType === specType)
+  )
+  // The spec-type level carries information only when more than one type is in
+  // play — with a single type its label separates nothing, so it's omitted.
+  const showTypeLevel = typesInPlay.length > 1
 
-    if (typeCases.length > 0) {
-      const def = config.specTypes[specType]
+  for (const specType of typesInPlay) {
+    const typeCases = realCases.filter((tc) => tc.specType === specType)
+    const def = config.specTypes[specType]
+
+    if (showTypeLevel) {
       const label = def?.label ?? specType
       lines.push("<details>")
       lines.push(
@@ -220,78 +346,21 @@ const renderPageCases = (
       lines.push("")
       lines.push("<blockquote>")
       lines.push("")
+    }
 
-      const specPaths = [...new Set(typeCases.map((tc) => tc.specPath))]
-      // A spec is a fallback when its cases were text-parsed while a discovery
-      // adapter was active — flag it so the reader knows it isn't the runner's
-      // answer for that file.
-      const fallbackSpecs = new Set(
-        typeCases.filter((tc) => tc.fallback).map((tc) => tc.specPath)
-      )
+    renderTypeSection(
+      lines,
+      typeCases,
+      def?.gallery ?? false,
+      root,
+      outputDir,
+      config,
+      resolveText,
+      appName,
+      screenshotLocales
+    )
 
-      for (const sp of specPaths) {
-        const link = toRelLink(sp, root, outputDir)
-        const marker = fallbackSpecs.has(sp)
-          ? " — ⚠️ text-parsed (not reported by the runner)"
-          : ""
-        lines.push(`📄 [\`${sp}\`](${link})${marker}`)
-        lines.push("")
-      }
-
-      if (def?.gallery) {
-        const firstSpecPath = typeCases[0]?.specPath ?? ""
-        const specDir = dirname(firstSpecPath)
-        const specBasename = basename(firstSpecPath)
-
-        const isFlat = basename(specDir) === config.specsDir
-        const screenshotsRelDir = isFlat
-          ? `${dirname(specDir)}/${config.screenshotsDir}/${specBasename}`
-          : `${specDir}/${config.screenshotsDir}/${specBasename}`
-        const screenshotsDirLink = toRelLink(screenshotsRelDir, root, outputDir)
-
-        const specAbsPath = join(root, firstSpecPath)
-        const basenames = parseScreenshotBasenames(specAbsPath)
-
-        // When a spec is shared across multiple apps, Playwright injects the
-        // app name into the screenshot filename:
-        //   baseName-APPNAME-Browser---locale.png
-        const appNameInfix = typeCases[0]?.sharedAcrossApps ? appName : ""
-
-        if (basenames.length > 0) {
-          lines.push("<details>")
-          lines.push("<summary>📸 screenshots</summary>")
-          lines.push("")
-          lines.push("<blockquote>")
-          lines.push("")
-
-          renderScreenshotGallery(
-            lines,
-            basenames,
-            screenshotsDirLink,
-            config.browserToOs,
-            screenshotLocales,
-            appNameInfix
-          )
-
-          lines.push("</blockquote>")
-          lines.push("")
-          lines.push("</details>")
-        }
-      }
-
-      // Strip the outer describe — it's always just the page wrapper
-      const outerDescribes = new Set(typeCases.map((tc) => tc.describes[0]))
-      const casesToRender =
-        outerDescribes.size === 1 &&
-        outerDescribes.values().next().value !== undefined
-          ? typeCases.map((tc) => ({
-              ...tc,
-              describes: tc.describes.slice(1),
-            }))
-          : typeCases
-
-      renderDescribeLevel(lines, casesToRender, resolveText)
-      lines.push("")
+    if (showTypeLevel) {
       lines.push("</blockquote>")
       lines.push("")
       lines.push("</details>")
