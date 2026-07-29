@@ -1422,6 +1422,36 @@ describe("groupSpecs page names & discovery cases", () => {
 })
 
 describe("generateAppMarkdown", () => {
+  test("an empty category name renders no box around the pages", () => {
+    const cases = [
+      {
+        describes: [],
+        pageName: "Page A",
+        specPath: "__tests__/a.test.ts",
+        specType: "default",
+        steps: [],
+        title: "t1",
+      },
+    ]
+    const withName: AppDomains = new Map([
+      ["", new Map([["All", new Map([["Page A", cases]])]])],
+    ])
+    const withoutName: AppDomains = new Map([
+      ["", new Map([["", new Map([["Page A", cases]])]])],
+    ])
+
+    assert.match(
+      renderApp("app", withName),
+      /<strong>All<\/strong> \(1 tests\)/
+    )
+
+    const md = renderApp("app", withoutName)
+    // The page group is still there. Only the empty box is gone.
+    assert.equal(md.includes("<strong></strong>"), false)
+    assert.match(md, /\*\*1 tests\*\*/)
+    assert.match(md, /<strong>Page A<\/strong> \(1 tests\)/)
+  })
+
   test("generates correct per-app markdown structure", () => {
     const domains: AppDomains = new Map([
       [

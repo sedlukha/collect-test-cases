@@ -143,7 +143,7 @@ The config is a plain ESM module exporting one object. All fields are optional u
 | `layout`          | `MonorepoLayout`                  | —                                    | Declarative monorepo layout — see [Monorepo layout](#monorepo-layout).                                                     |
 | `resolveApp`      | `(absPath, root) => …`            | from `layout` if set, else include all | Escape-hatch override for "does this spec belong to this app?".                                                            |
 | `resolveDomain`   | `(absPath, root) => string`       | from `layout` if set, else `''`      | Returns the outermost grouping label.                                                                                      |
-| `resolveCategory` | `(absPath, root) => string\|null` | from `layout` if set, else subfolder | Returns the second-level grouping label.                                                                                   |
+| `resolveCategory` | `(absPath, root) => string\|null` | from `layout` if set, else subfolder | Returns the second-level grouping label. An empty string skips the wrapper.                                                |
 | `resolvePageName` | `(absPath, root) => string\|string[]\|null` | subfolder / filename stem            | Returns the innermost grouping label. An array puts one spec file in several page groups. Use for deep test trees the default single-segment rule collapses — see [How grouping works](#how-grouping-works). |
 | `plugins`         | `CollectTestCasesPlugin[]`        | `[]`                                 | Renderer plugins — see [Plugin API](#plugin-api).                                                                          |
 
@@ -380,7 +380,7 @@ Because it never runs the file, an `it.each` row appears as a **single** entry w
 Each config produces one README. Within that README the renderer groups specs as **domain → category → pageName → TestCase[]**.
 
 - **domain** — from `resolveDomain` (e.g. the segment after `routesDir`). Empty string skips the outer wrapper.
-- **category** — from `resolveCategory`, or the `__checks__` subfolder, or `'other'` for flat specs.
+- **category** — from `resolveCategory`, or the `__checks__` subfolder, or `'other'` for flat specs. Empty string skips this wrapper, the same way an empty domain does. Use it when every group is a page and one box around them all adds nothing.
 - **pageName** — from `resolvePageName`, or the subfolder inside `__checks__`, or the spec filename stem.
 
 The default pageName is the **single** path segment right after `specsDir`. That collapses a deep tree — `__tests__/pages/a/x.test.ts` and `__tests__/shared/ui/z.test.ts` would both reduce to their first segment and every file would pile into one group. Set `resolvePageName` to key on the full sub-path instead:

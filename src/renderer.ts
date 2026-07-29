@@ -488,13 +488,18 @@ export const generateAppMarkdown = ({
         continue
       }
 
-      lines.push("<details>")
-      lines.push(
-        `<summary><strong>${packageType}</strong> (${pkgTotal} tests)</summary>`
-      )
-      lines.push("")
-      lines.push("<blockquote>")
-      lines.push("")
+      // An empty category name skips the wrapper, the same way an empty domain
+      // does. A document with one category needs no box around everything. It
+      // would only cost the reader a click.
+      if (packageType !== "") {
+        lines.push("<details>")
+        lines.push(
+          `<summary><strong>${packageType}</strong> (${pkgTotal} tests)</summary>`
+        )
+        lines.push("")
+        lines.push("<blockquote>")
+        lines.push("")
+      }
 
       for (const [pageName, cases] of pages) {
         renderPageCases(
@@ -510,10 +515,12 @@ export const generateAppMarkdown = ({
         )
       }
 
-      lines.push("</blockquote>")
-      lines.push("")
-      lines.push("</details>")
-      lines.push("")
+      if (packageType !== "") {
+        lines.push("</blockquote>")
+        lines.push("")
+        lines.push("</details>")
+        lines.push("")
+      }
     }
 
     if (domain !== "") {
