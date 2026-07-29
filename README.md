@@ -144,7 +144,7 @@ The config is a plain ESM module exporting one object. All fields are optional u
 | `resolveApp`      | `(absPath, root) => …`            | from `layout` if set, else include all | Escape-hatch override for "does this spec belong to this app?".                                                            |
 | `resolveDomain`   | `(absPath, root) => string`       | from `layout` if set, else `''`      | Returns the outermost grouping label.                                                                                      |
 | `resolveCategory` | `(absPath, root) => string\|null` | from `layout` if set, else subfolder | Returns the second-level grouping label.                                                                                   |
-| `resolvePageName` | `(absPath, root) => string\|null` | subfolder / filename stem            | Returns the innermost grouping label. Use for deep test trees the default single-segment rule collapses — see [How grouping works](#how-grouping-works). |
+| `resolvePageName` | `(absPath, root) => string\|string[]\|null` | subfolder / filename stem            | Returns the innermost grouping label. An array puts one spec file in several page groups. Use for deep test trees the default single-segment rule collapses — see [How grouping works](#how-grouping-works). |
 | `plugins`         | `CollectTestCasesPlugin[]`        | `[]`                                 | Renderer plugins — see [Plugin API](#plugin-api).                                                                          |
 
 Default `exclude`: `['**/node_modules/**', '**/.git/**', '**/__screenshots__/**']`.
@@ -392,6 +392,26 @@ resolvePageName: (absPath, root) => {
   return parts.slice(1, -1).join("/") || null
 }
 ```
+
+### One spec file in several page groups
+
+`resolvePageName` may return an array. Then the same spec file lands in every page group it names.
+
+Use it for a component that more than one page shows. Its tests stay in one file, so no code is copied. The document repeats them, so each page group is a full checklist:
+
+```js
+const SHARED_BY = {
+  "shared/ui/status-card": ["401 Unauthorized", "403 Forbidden"],
+}
+
+resolvePageName: (absPath, root) => {
+  const parts = absPath.slice(root.length + 1).split("/")
+  const slice = parts.slice(1, -1).join("/")
+  return SHARED_BY[slice] ?? slice ?? null
+}
+```
+
+The page group counts every case it lists. Each total above the page level counts a test once, so the header number stays true. An empty array behaves like `null`.
 
 A spec whose `resolveApp` returns `{ sharedAcrossApps: true }` causes the renderer to inject the app name into screenshot filenames — matches Playwright's project-suffix convention.
 

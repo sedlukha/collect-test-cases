@@ -225,8 +225,15 @@ export const groupSpecs = (
     const domain = config.resolveDomain?.(absPath, root) ?? ""
     const specType = extractSpecType(specFile, config.specTypes)
     const userPageName = config.resolvePageName?.(absPath, root) ?? null
-    const pageName =
-      userPageName ?? checksSubfolder ?? specFile.split(".")[0] ?? specFile
+    const defaultPageName =
+      checksSubfolder ?? specFile.split(".")[0] ?? specFile
+    // A config may name several pages for one spec file. Then the same cases
+    // render inside each of those page groups. An empty array means the config
+    // named none, so use the default name.
+    const userPageNames =
+      typeof userPageName === "string" ? [userPageName] : (userPageName ?? [])
+    const pageNames =
+      userPageNames.length > 0 ? userPageNames : [defaultPageName]
     // A file the adapter reported uses its cases verbatim. A file NOT in the
     // discovery result while discovery is active is a text-parsed fallback —
     // mark it so the renderer can flag that it didn't come from the runner.
@@ -260,14 +267,6 @@ export const groupSpecs = (
     } else {
       cases = parseSpecFile(absPath)
     }
-    const casesWithPath = cases.map((c) => ({
-      ...c,
-      pageName,
-      sharedAcrossApps,
-      specPath: rel,
-      specType,
-    }))
-
     let domainMap = grouped.get(domain)
 
     if (!domainMap) {
@@ -282,11 +281,23 @@ export const groupSpecs = (
       domainMap.set(category, categoryMap)
     }
 
-    if (!categoryMap.has(pageName)) {
-      categoryMap.set(pageName, [])
-    }
+    for (const [index, pageName] of pageNames.entries()) {
+      const casesWithPath = cases.map((c) => ({
+        ...c,
+        pageName,
+        // The first group owns the test. Later groups only repeat it.
+        pageRepeat: index > 0,
+        sharedAcrossApps,
+        specPath: rel,
+        specType,
+      }))
 
-    categoryMap.get(pageName)?.push(...casesWithPath)
+      if (!categoryMap.has(pageName)) {
+        categoryMap.set(pageName, [])
+      }
+
+      categoryMap.get(pageName)?.push(...casesWithPath)
+    }
   }
 
   return grouped

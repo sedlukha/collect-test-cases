@@ -18,6 +18,10 @@ export interface TestCase {
   // `'skip'`). `undefined` for plain `test()`/`it()`.
   modifier?: "fail" | "fixme" | "only" | "skip" | "slow" | "todo"
   pageName: string
+  // True on every copy after the first, when `resolvePageName` returned several
+  // page names for one spec file. The copy is rendered inside its page group,
+  // but the header total skips it. So one test is counted one time.
+  pageRepeat?: boolean
   // True when the same spec file is included in more than one app's output.
   // Used by the screenshot gallery to inject the app name into image
   // filenames so per-app snapshots don't collide. Defaults to `false` when

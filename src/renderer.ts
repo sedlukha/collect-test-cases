@@ -458,9 +458,12 @@ export const generateAppMarkdown = ({
     const domainCases = [...packageTypes.values()]
       .flatMap((pages) => [...pages.values()])
       .flat()
-    const domainTotal = domainCases.filter(isRealCase).length
+    const domainTotal = domainCases.filter(isCountedCase).length
 
-    if (domainTotal === 0 && !domainCases.some((tc) => tc.emptyFallback)) {
+    if (
+      !domainCases.some(isRealCase) &&
+      !domainCases.some((tc) => tc.emptyFallback)
+    ) {
       continue
     }
 
@@ -476,9 +479,12 @@ export const generateAppMarkdown = ({
 
     for (const [packageType, pages] of packageTypes) {
       const pkgCases = [...pages.values()].flat()
-      const pkgTotal = pkgCases.filter(isRealCase).length
+      const pkgTotal = pkgCases.filter(isCountedCase).length
 
-      if (pkgTotal === 0 && !pkgCases.some((tc) => tc.emptyFallback)) {
+      if (
+        !pkgCases.some(isRealCase) &&
+        !pkgCases.some((tc) => tc.emptyFallback)
+      ) {
         continue
       }
 
@@ -523,6 +529,11 @@ export const generateAppMarkdown = ({
 
 const isRealCase = (tc: TestCase): boolean => !tc.emptyFallback
 
+// A page group lists every case it shows, so a repeated case is part of that
+// list. A total above the page level counts each test once instead. So a spec
+// file placed in several page groups does not inflate the number.
+const isCountedCase = (tc: TestCase): boolean => isRealCase(tc) && !tc.pageRepeat
+
 const flattenDomains = (domains: AppDomains): TestCase[] =>
   [...domains.values()]
     .flatMap((pkgs) => [...pkgs.values()])
@@ -531,4 +542,4 @@ const flattenDomains = (domains: AppDomains): TestCase[] =>
 
 // Counts real tests only — empty-fallback placeholders are not tests.
 const countDomains = (domains: AppDomains): number =>
-  flattenDomains(domains).filter(isRealCase).length
+  flattenDomains(domains).filter(isCountedCase).length

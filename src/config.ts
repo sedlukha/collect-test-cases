@@ -49,10 +49,16 @@ export type ResolveDomain = (specAbsPath: string, root: string) => string
 // Use this when a deep test tree collapses under the default rule — e.g.
 // `__tests__/pages/a/x.test.ts` and `__tests__/shared/ui/z.test.ts` would both
 // resolve to the single segment after `specsDir` and land in one group.
+//
+// Return an array to place ONE spec file in SEVERAL page groups. A component
+// shared by three pages then lists its checks inside each of those pages, so a
+// page group is a complete checklist. The tests stay in one file — only the
+// document repeats them. The header total counts each test once. An empty
+// array behaves like `null`.
 export type ResolvePageName = (
   specAbsPath: string,
   root: string
-) => string | null
+) => string | string[] | null
 
 export interface SpecTypeDefinition {
   // When true, a screenshot gallery is rendered for spec files of this type.

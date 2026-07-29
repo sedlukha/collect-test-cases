@@ -1177,6 +1177,79 @@ describe("groupSpecs page names & discovery cases", () => {
     assert.deepEqual(pageNames, ["pages/a", "shared/ui"])
   })
 
+  // A shared component belongs to several pages. Its tests live in one file.
+  // The config names every page that shows it, so each page group holds a
+  // complete checklist.
+  const sharedSetup = (pages: string[] | null) => {
+    mkdirSync(join(tmpDir, "__tests__/pages/a"), { recursive: true })
+    mkdirSync(join(tmpDir, "__tests__/shared/ui"), { recursive: true })
+    writeFileSync(
+      join(tmpDir, "__tests__/pages/a/x.test.ts"),
+      "test('t1', () => {})"
+    )
+    writeFileSync(
+      join(tmpDir, "__tests__/shared/ui/z.test.ts"),
+      "test('t2', () => {})\ntest('t3', () => {})"
+    )
+
+    return applyConfigDefaults({
+      include: ["__tests__/**/*.test.ts"],
+      resolveCategory: () => "All",
+      resolvePageName: (absPath) =>
+        absPath.includes("/shared/") ? pages : "Page A",
+      rootDir: tmpDir,
+      scanDirs: [tmpDir],
+      specsDir: "__tests__",
+    })
+  }
+
+  test("resolvePageName puts one spec file into every page name it returns", () => {
+    const resolved = sharedSetup(["Page A", "Page B"])
+    const grouped = groupSpecs(collectSpecFiles(resolved), resolved)
+    const byPage = new Map(allCases(grouped))
+
+    assert.deepEqual([...byPage.keys()].sort(), ["Page A", "Page B"])
+    assert.deepEqual(
+      byPage.get("Page A")?.map((tc) => tc.title),
+      ["t1", "t2", "t3"]
+    )
+    assert.deepEqual(
+      byPage.get("Page B")?.map((tc) => tc.title),
+      ["t2", "t3"]
+    )
+    // The first page owns the tests. The second page only repeats them.
+    assert.equal(
+      byPage.get("Page A")?.every((tc) => !tc.pageRepeat),
+      true
+    )
+    assert.equal(
+      byPage.get("Page B")?.every((tc) => tc.pageRepeat),
+      true
+    )
+  })
+
+  test("a repeated spec file is counted once above the page level", () => {
+    const resolved = sharedSetup(["Page A", "Page B"])
+    const md = renderApp("app", groupSpecs(collectSpecFiles(resolved), resolved))
+
+    // 3 tests exist. Page A lists all 3. Page B repeats 2 of them.
+    assert.match(md, /\*\*3 tests\*\*/)
+    assert.match(md, /<strong>All<\/strong> \(3 tests\)/)
+    assert.match(md, /<strong>Page A<\/strong> \(3 tests\)/)
+    assert.match(md, /<strong>Page B<\/strong> \(2 tests\)/)
+    assert.equal(md.match(/☑️ t2/g)?.length, 2)
+  })
+
+  test("an empty page-name array falls back to the default page name", () => {
+    const resolved = sharedSetup([])
+    const grouped = groupSpecs(collectSpecFiles(resolved), resolved)
+    const pageNames = allCases(grouped)
+      .map(([pageName]) => pageName)
+      .sort()
+
+    assert.deepEqual(pageNames, ["Page A", "shared"])
+  })
+
   test("falls back to the specsDir subfolder when resolvePageName returns null", () => {
     mkdirSync(join(tmpDir, "__checks__/HomePage"), { recursive: true })
     writeFileSync(
