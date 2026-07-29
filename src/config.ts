@@ -60,6 +60,36 @@ export type ResolvePageName = (
   root: string
 ) => string | string[] | null
 
+// Controls the shape of the generated Markdown. Every field keeps the current
+// output as its default, so an existing document does not change unless a
+// config opts in.
+export interface RenderOptions {
+  // Level (1–6) at which the OUTERMOST rendered group becomes a Markdown
+  // heading instead of a `<details>` box. A heading is always open, so GitHub
+  // builds a table of contents for the file and browser find (Ctrl+F) reaches
+  // the text inside. Levels below the outermost stay `<details>`. `0` (the
+  // default) keeps the outermost group as a `<details>` box too.
+  // @default 0
+  headingLevel?: number
+
+  // Wrap every `<details>` body in a `<blockquote>`. The quote only draws a bar
+  // and an indent — GitHub renders Markdown inside `<details>` on its own, as
+  // long as a blank line follows `</summary>`. Set to `false` to drop the
+  // wrapper at every level; the nesting stays, the indent goes.
+  // @default true
+  quote?: boolean
+
+  // Where a spec file's link is placed.
+  // - `'line'` (default): a standalone `📄 [path]` line above the file's tests.
+  // - `'heading'`: fold the link into that file's top `describe` summary (so the
+  //   describe text becomes the link) and drop the standalone line. Falls back
+  //   to a line for tests that have no top `describe` to carry the link.
+  // - `'none'`: no link at all (a fallback "not reported by the runner" warning
+  //   is still shown, since that is a warning, not a convenience link).
+  // @default "line"
+  specLink?: "heading" | "line" | "none"
+}
+
 export interface SpecTypeDefinition {
   // When true, a screenshot gallery is rendered for spec files of this type.
   // @default false
@@ -143,6 +173,11 @@ export interface CollectTestCasesConfig {
   // Plugins extend the renderer. See `CollectTestCasesPlugin` for the hook list.
   plugins?: CollectTestCasesPlugin[]
 
+  // Controls the shape of the generated Markdown — blockquote wrappers, whether
+  // the outermost group is a heading, and where the spec link goes. Every field
+  // defaults to today's output. See `RenderOptions`.
+  render?: RenderOptions
+
   // Escape hatch: decides whether a spec found in `scanDirs` belongs
   // to this app. Prefer `layout` for standard monorepo structures.
   resolveApp?: ResolveApp
@@ -189,6 +224,7 @@ export interface ResolvedConfig {
   outputPath: string
   playwright: PlaywrightDiscovery | undefined
   plugins: CollectTestCasesPlugin[]
+  render: Required<RenderOptions>
   resolveApp: ResolveApp | undefined
   resolveCategory: ResolveCategory | undefined
   resolveDomain: ResolveDomain | undefined
@@ -252,6 +288,11 @@ export const applyConfigDefaults = (
     outputPath,
     playwright: user?.playwright,
     plugins: user?.plugins ?? [],
+    render: {
+      headingLevel: user?.render?.headingLevel ?? 0,
+      quote: user?.render?.quote ?? true,
+      specLink: user?.render?.specLink ?? "line",
+    },
     resolveApp: user?.resolveApp ?? layoutResolvers?.resolveApp,
     resolveCategory: user?.resolveCategory ?? layoutResolvers?.resolveCategory,
     resolveDomain: user?.resolveDomain ?? layoutResolvers?.resolveDomain,

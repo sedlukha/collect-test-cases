@@ -146,6 +146,7 @@ The config is a plain ESM module exporting one object. All fields are optional u
 | `resolveCategory` | `(absPath, root) => string\|null` | from `layout` if set, else subfolder | Returns the second-level grouping label. An empty string skips the wrapper.                                                |
 | `resolvePageName` | `(absPath, root) => string\|string[]\|null` | subfolder / filename stem            | Returns the innermost grouping label. An array puts one spec file in several page groups. Use for deep test trees the default single-segment rule collapses — see [How grouping works](#how-grouping-works). |
 | `plugins`         | `CollectTestCasesPlugin[]`        | `[]`                                 | Renderer plugins — see [Plugin API](#plugin-api).                                                                          |
+| `render`          | `{ quote?, headingLevel?, specLink? }` | `{ quote: true, headingLevel: 0, specLink: 'line' }` | Controls the Markdown shape — see [Render options](#render-options).                                                       |
 
 Default `exclude`: `['**/node_modules/**', '**/.git/**', '**/__screenshots__/**']`.
 
@@ -167,6 +168,42 @@ specTypes: {
 | `order`   | `number`            | Lower numbers appear first.                                                                                |
 | `pattern` | `RegExp \| string`  | Filename matcher. Strings match as substring; RegExps via `.test()`. Omit to make this the catch-all.      |
 | `gallery` | `boolean`           | Render a screenshot table for specs of this type.                                                          |
+
+## Render options
+
+The default output nests every group in a `<details>` box and wraps each body in a `<blockquote>`. For a tester reading a deep tree that means three vertical bars and three indents before the first test line. The `render` block trims that. **Every field keeps today's output as its default, so an existing document does not change until you opt in.**
+
+```js
+render: {
+  quote: false,        // default true    — drop every <blockquote> wrapper
+  headingLevel: 2,     // default 0        — outermost group as "##", not <details>
+  specLink: "heading", // default "line"   — "line" | "heading" | "none"
+}
+```
+
+| Field          | Type                            | Default  | Description                                                                                                                                                                                                                 |
+| -------------- | ------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `quote`        | `boolean`                       | `true`   | Wrap each `<details>` body in a `<blockquote>`. GitHub renders Markdown inside `<details>` without it (a blank line after `</summary>` is enough), so `false` drops the bar and indent at every level; the nesting stays.       |
+| `headingLevel` | `number`                        | `0`      | When `1`–`6`, the **outermost** rendered group (the domain if one is named, else the category, else the page) becomes a Markdown heading of that level instead of a `<details>` box. A heading is always open, so GitHub builds a table of contents and browser find (Ctrl+F) reaches the text inside. Levels below it stay collapsible. `0` keeps the box. |
+| `specLink`     | `'line' \| 'heading' \| 'none'` | `'line'` | Where a spec file's link goes. `'line'` is the standalone `📄 [path]` line. `'heading'` folds the link into that file's top `describe` summary and drops the line (a file whose tests sit under no `describe` keeps the line). `'none'` drops the link — a "not reported by the runner" warning is still shown.                                          |
+
+With `quote: false`, `headingLevel: 2`, `specLink: "heading"` a page collapses from three nested boxes to one:
+
+```md
+## Sign-in screen
+
+23 tests, 16 shared
+
+<details>
+<summary><strong><a href="./__tests__/pages/sign-in/tab.test.ts">The browser tab of the sign-in page</a></strong> (2 tests)</summary>
+
+- ☑️ shows **"Sign in | Example"**
+- ☑️ shows a different tab title from the sign-up page
+
+</details>
+```
+
+> GitHub's rendering of these forms is checked by a committed probe: [`examples/github-render-probe.md`](./examples/github-render-probe.md). Open it on GitHub to confirm a `<details>` inside a `<details>` (no `<blockquote>`) still discloses, and that a `<summary>` holding an `<a>` keeps its triangle clickable.
 
 ## Monorepo layout
 
@@ -412,6 +449,8 @@ resolvePageName: (absPath, root) => {
 ```
 
 The page group counts every case it lists. Each total above the page level counts a test once, so the header number stays true. An empty array behaves like `null`.
+
+Because a page group lists a shared check once per page, adding the group numbers gives a larger total than the header. The document explains the gap so it never looks broken: a page group that holds a repeat names it in its summary — `Sign-in screen (23 tests, 16 shared)`, where `16 shared` is the number of checks borrowed from another page — and a one-line note appears under the header whenever any repeat exists. A document with no repeats keeps its old, unchanged output.
 
 A spec whose `resolveApp` returns `{ sharedAcrossApps: true }` causes the renderer to inject the app name into screenshot filenames — matches Playwright's project-suffix convention.
 

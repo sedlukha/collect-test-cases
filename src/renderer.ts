@@ -113,10 +113,44 @@ const renderScreenshotGallery = (
   }
 }
 
+// Opens a collapsible box: `<details>`, a `<summary>`, and (unless the config
+// turned it off) the `<blockquote>` wrapper. The blank line after `</summary>`
+// is always kept — GitHub needs it to render Markdown inside `<details>`.
+const pushBoxOpen = (
+  lines: string[],
+  summary: string,
+  quote: boolean
+): void => {
+  lines.push("<details>")
+  lines.push(`<summary>${summary}</summary>`)
+  lines.push("")
+
+  if (quote) {
+    lines.push("<blockquote>")
+    lines.push("")
+  }
+}
+
+// Closes a box opened by `pushBoxOpen`, mirroring its `quote` choice so the
+// `<details>`/`<blockquote>` tags stay balanced either way.
+const pushBoxClose = (lines: string[], quote: boolean): void => {
+  if (quote) {
+    lines.push("</blockquote>")
+  }
+
+  lines.push("")
+  lines.push("</details>")
+  lines.push("")
+}
+
 const renderDescribeLevel = (
   lines: string[],
   levelCases: TestCase[],
-  resolve: (text: string) => string
+  resolve: (text: string) => string,
+  render: ResolvedConfig["render"],
+  // With `specLink: "heading"`, the file link is folded into this level's
+  // `describe` summaries. `null` at every deeper level (and in the other modes).
+  topLink: string | null
 ): void => {
   const directCases = levelCases.filter((tc) => tc.describes.length === 0)
   const byDescribe = new Map<string, TestCase[]>()
@@ -137,18 +171,17 @@ const renderDescribeLevel = (
   }
 
   for (const [describeName, subCases] of byDescribe) {
-    lines.push("<details>")
-    lines.push(
-      `<summary><strong>${resolve(describeName)}</strong> (${subCases.length} tests)</summary>`
+    const name = resolve(describeName)
+    // The file's top describe carries the spec link when `specLink: "heading"`,
+    // so the standalone `📄 [path]` line can be dropped upstream.
+    const label = topLink ? `<a href="${topLink}">${name}</a>` : name
+    pushBoxOpen(
+      lines,
+      `<strong>${label}</strong> (${subCases.length} tests)`,
+      render.quote
     )
-    lines.push("")
-    lines.push("<blockquote>")
-    lines.push("")
-    renderDescribeLevel(lines, subCases, resolve)
-    lines.push("</blockquote>")
-    lines.push("")
-    lines.push("</details>")
-    lines.push("")
+    renderDescribeLevel(lines, subCases, resolve, render, null)
+    pushBoxClose(lines, render.quote)
   }
 
   for (const tc of directCases) {
@@ -160,23 +193,18 @@ const renderDescribeLevel = (
       continue
     }
 
-    lines.push("<details>")
-    lines.push(
-      `<summary>${iconForModifier(tc.modifier)} ${resolve(tc.title)}</summary>`
+    pushBoxOpen(
+      lines,
+      `${iconForModifier(tc.modifier)} ${resolve(tc.title)}`,
+      render.quote
     )
-    lines.push("")
-    lines.push("<blockquote>")
-    lines.push("")
 
     for (let i = 0; i < tc.steps.length; i += 1) {
       lines.push(`${i + 1}. ${resolve(tc.steps[i] ?? "")}`)
     }
 
     lines.push("")
-    lines.push("</blockquote>")
-    lines.push("")
-    lines.push("</details>")
-    lines.push("")
+    pushBoxClose(lines, render.quote)
   }
 }
 
@@ -210,11 +238,7 @@ const renderGallery = (
   // name into the screenshot filename: baseName-APPNAME-Browser---locale.png
   const appNameInfix = sharedAcrossApps ? appName : ""
 
-  lines.push("<details>")
-  lines.push("<summary>📸 screenshots</summary>")
-  lines.push("")
-  lines.push("<blockquote>")
-  lines.push("")
+  pushBoxOpen(lines, "📸 screenshots", config.render.quote)
   renderScreenshotGallery(
     lines,
     basenames,
@@ -223,10 +247,7 @@ const renderGallery = (
     screenshotLocales,
     appNameInfix
   )
-  lines.push("</blockquote>")
-  lines.push("")
-  lines.push("</details>")
-  lines.push("")
+  pushBoxClose(lines, config.render.quote)
 }
 
 // Renders every case of one spec type, with each file's link attached to the
@@ -266,6 +287,8 @@ const renderTypeSection = (
   // The gallery is derived from a single spec file — attach it to that file.
   const gallerySpec = typeCases[0]?.specPath ?? ""
 
+  const { specLink } = config.render
+
   for (const [specPath, fileCases] of byFile) {
     const link = toRelLink(specPath, root, outputDir)
     // A spec is a fallback when its cases were text-parsed while a discovery
@@ -274,8 +297,22 @@ const renderTypeSection = (
     const marker = fileCases.some((tc) => tc.fallback)
       ? " — ⚠️ text-parsed (not reported by the runner)"
       : ""
-    lines.push(`📄 [\`${specPath}\`](${link})${marker}`)
-    lines.push("")
+    // A file whose tests sit directly under no `describe` has nothing for
+    // `specLink: "heading"` to fold the link into, so keep the line for those.
+    const hasDirectTopTests = fileCases.some((tc) => tc.describes.length === 0)
+
+    if (
+      specLink === "line" ||
+      (specLink === "heading" && hasDirectTopTests)
+    ) {
+      lines.push(`📄 [\`${specPath}\`](${link})${marker}`)
+      lines.push("")
+    } else if (marker !== "") {
+      // The link moved into a heading or was dropped, but a runner-mismatch
+      // warning is never silent — surface it on its own line.
+      lines.push(marker.replace(/^ — /, ""))
+      lines.push("")
+    }
 
     if (hasGallery && specPath === gallerySpec) {
       renderGallery(
@@ -290,7 +327,13 @@ const renderTypeSection = (
       )
     }
 
-    renderDescribeLevel(lines, fileCases, resolveText)
+    renderDescribeLevel(
+      lines,
+      fileCases,
+      resolveText,
+      config.render,
+      specLink === "heading" ? link : null
+    )
     lines.push("")
   }
 }
@@ -304,7 +347,10 @@ const renderPageCases = (
   config: ResolvedConfig,
   resolveText: (text: string) => string,
   appName: string,
-  screenshotLocales: string[]
+  screenshotLocales: string[],
+  // > 0 renders this page as a Markdown heading of that level instead of a
+  // `<details>` box (used when the page is the outermost group in play).
+  headingLevel: number
 ): void => {
   // Placeholder cases for fallback files that text-parsing found no tests in
   // are not real tests — keep them out of the count and the test list, and
@@ -314,13 +360,26 @@ const renderPageCases = (
     ...new Set(cases.filter((tc) => tc.emptyFallback).map((tc) => tc.specPath)),
   ]
 
-  lines.push("<details>")
-  lines.push(
-    `<summary><strong>${pageName}</strong> (${realCases.length} tests)</summary>`
-  )
-  lines.push("")
-  lines.push("<blockquote>")
-  lines.push("")
+  // A page group lists every check it shows, including a check shared from
+  // another page. That repeat is counted here but not in the header total, so
+  // name it — otherwise the group numbers add up past the header (issue #15).
+  const sharedCount = realCases.filter((tc) => tc.pageRepeat).length
+  const countLabel = `${realCases.length} tests${
+    sharedCount > 0 ? `, ${sharedCount} shared` : ""
+  }`
+
+  if (headingLevel > 0) {
+    lines.push(`${"#".repeat(headingLevel)} ${pageName}`)
+    lines.push("")
+    lines.push(countLabel)
+    lines.push("")
+  } else {
+    pushBoxOpen(
+      lines,
+      `<strong>${pageName}</strong> (${countLabel})`,
+      config.render.quote
+    )
+  }
 
   const specTypeOrder = Object.entries(config.specTypes)
     .sort(([, a], [, b]) => a.order - b.order)
@@ -339,13 +398,11 @@ const renderPageCases = (
 
     if (showTypeLevel) {
       const label = def?.label ?? specType
-      lines.push("<details>")
-      lines.push(
-        `<summary><strong>${label}</strong> (${typeCases.length} tests)</summary>`
+      pushBoxOpen(
+        lines,
+        `<strong>${label}</strong> (${typeCases.length} tests)`,
+        config.render.quote
       )
-      lines.push("")
-      lines.push("<blockquote>")
-      lines.push("")
     }
 
     renderTypeSection(
@@ -361,10 +418,7 @@ const renderPageCases = (
     )
 
     if (showTypeLevel) {
-      lines.push("</blockquote>")
-      lines.push("")
-      lines.push("</details>")
-      lines.push("")
+      pushBoxClose(lines, config.render.quote)
     }
   }
 
@@ -378,10 +432,9 @@ const renderPageCases = (
     lines.push("")
   }
 
-  lines.push("</blockquote>")
-  lines.push("")
-  lines.push("</details>")
-  lines.push("")
+  if (headingLevel === 0) {
+    pushBoxClose(lines, config.render.quote)
+  }
 }
 
 interface AppMarkdownContext {
@@ -436,6 +489,7 @@ export const generateAppMarkdown = ({
   const effectiveOutputDir = outputDir ?? effectiveRoot
 
   const total = countDomains(domains)
+  const { headingLevel, quote } = resolvedConfig.render
 
   const lines: string[] = [
     `# ${effectiveAppName} Test Cases`,
@@ -445,6 +499,20 @@ export const generateAppMarkdown = ({
     `**${total} tests**`,
     "",
   ]
+
+  // A page group lists a shared check once per page it belongs to, so the group
+  // numbers add up past the header, which counts each check once. Say so, but
+  // only when a repeat exists — a plain document keeps its old header (issue #15).
+  const hasPageRepeat = flattenDomains(domains).some(
+    (tc) => tc.pageRepeat && !tc.emptyFallback
+  )
+
+  if (hasPageRepeat) {
+    lines.push(
+      "_A check shared by several pages is listed under each one and counted once in this total._"
+    )
+    lines.push("")
+  }
 
   // Empty-fallback placeholders don't count as tests, but a document made up
   // ONLY of them must still render (to warn about the files).
@@ -467,14 +535,24 @@ export const generateAppMarkdown = ({
       continue
     }
 
+    // The outermost group in play becomes a heading when `headingLevel > 0`:
+    // the domain when one is named, else the category, else the page. A heading
+    // is always open — no `<details>` box, no closing tag.
+    const domainAsHeading = headingLevel > 0 && domain !== ""
+
     if (domain !== "") {
-      lines.push("<details>")
-      lines.push(
-        `<summary><strong>${domain}</strong> (${domainTotal} tests)</summary>`
-      )
-      lines.push("")
-      lines.push("<blockquote>")
-      lines.push("")
+      if (domainAsHeading) {
+        lines.push(`${"#".repeat(headingLevel)} ${domain}`)
+        lines.push("")
+        lines.push(`${domainTotal} tests`)
+        lines.push("")
+      } else {
+        pushBoxOpen(
+          lines,
+          `<strong>${domain}</strong> (${domainTotal} tests)`,
+          quote
+        )
+      }
     }
 
     for (const [packageType, pages] of packageTypes) {
@@ -491,15 +569,32 @@ export const generateAppMarkdown = ({
       // An empty category name skips the wrapper, the same way an empty domain
       // does. A document with one category needs no box around everything. It
       // would only cost the reader a click.
+      // The category is the outermost group only when no domain wraps it, so it
+      // becomes the heading in that case.
+      const categoryAsHeading =
+        headingLevel > 0 && domain === "" && packageType !== ""
+
       if (packageType !== "") {
-        lines.push("<details>")
-        lines.push(
-          `<summary><strong>${packageType}</strong> (${pkgTotal} tests)</summary>`
-        )
-        lines.push("")
-        lines.push("<blockquote>")
-        lines.push("")
+        if (categoryAsHeading) {
+          lines.push(`${"#".repeat(headingLevel)} ${packageType}`)
+          lines.push("")
+          lines.push(`${pkgTotal} tests`)
+          lines.push("")
+        } else {
+          pushBoxOpen(
+            lines,
+            `<strong>${packageType}</strong> (${pkgTotal} tests)`,
+            quote
+          )
+        }
       }
+
+      // The page is the outermost group only when neither a domain nor a
+      // category wraps it.
+      const pageHeadingLevel =
+        headingLevel > 0 && domain === "" && packageType === ""
+          ? headingLevel
+          : 0
 
       for (const [pageName, cases] of pages) {
         renderPageCases(
@@ -511,23 +606,18 @@ export const generateAppMarkdown = ({
           resolvedConfig,
           resolveText,
           effectiveAppName,
-          screenshotLocales
+          screenshotLocales,
+          pageHeadingLevel
         )
       }
 
-      if (packageType !== "") {
-        lines.push("</blockquote>")
-        lines.push("")
-        lines.push("</details>")
-        lines.push("")
+      if (packageType !== "" && !categoryAsHeading) {
+        pushBoxClose(lines, quote)
       }
     }
 
-    if (domain !== "") {
-      lines.push("</blockquote>")
-      lines.push("")
-      lines.push("</details>")
-      lines.push("")
+    if (domain !== "" && !domainAsHeading) {
+      pushBoxClose(lines, quote)
     }
   }
 

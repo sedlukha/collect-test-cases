@@ -17,6 +17,7 @@ import {
   countDomains,
   generateAppMarkdown,
   parseSpecFile,
+  type TestCase,
 } from "../src/index.js"
 
 let tmpDir: string
@@ -1241,9 +1242,26 @@ describe("groupSpecs page names & discovery cases", () => {
     // 3 tests exist. Page A lists all 3. Page B repeats 2 of them.
     assert.match(md, /\*\*3 tests\*\*/)
     assert.match(md, /<strong>All<\/strong> \(3 tests\)/)
+    // Page A owns its tests — no repeat, so no "shared" suffix.
     assert.match(md, /<strong>Page A<\/strong> \(3 tests\)/)
-    assert.match(md, /<strong>Page B<\/strong> \(2 tests\)/)
+    // Page B's 2 tests are both repeats — named so the group numbers, which add
+    // up past the header, explain the gap (issue #15).
+    assert.match(md, /<strong>Page B<\/strong> \(2 tests, 2 shared\)/)
     assert.equal(md.match(/☑️ t2/g)?.length, 2)
+
+    // And a one-line note under the header tells the reader why.
+    assert.match(md, /shared by several pages/)
+  })
+
+  test("no shared note or suffix when no page is repeated", () => {
+    const resolved = sharedSetup(["Page A"])
+    const domains = groupSpecs(collectSpecFiles(resolved), resolved)
+    const md = renderApp("app", domains)
+
+    // Nothing is repeated, so the header note and the "N shared" suffix are
+    // both absent (the spec path itself may still contain the word "shared").
+    assert.doesNotMatch(md, /shared by several pages/)
+    assert.doesNotMatch(md, /tests, \d+ shared\)/)
   })
 
   test("an empty page-name array falls back to the default page name", () => {
@@ -2429,5 +2447,210 @@ describe("generateAppMarkdown", () => {
     // Two types → both labels are shown to separate them.
     assert.ok(md.includes("<summary><strong>👥 Guest</strong> (1 tests)</summary>"))
     assert.ok(md.includes("<summary><strong>🔐 Auth</strong> (1 tests)</summary>"))
+  })
+})
+
+describe("render config (issue #16)", () => {
+  // Two describes in the page (so the single-describe strip does not fire and
+  // `specLink: "heading"` has a describe to fold the link into), 2 tests total.
+  const pageCases = (): TestCase[] => [
+    {
+      describes: ["The browser tab of the sign-in page"],
+      pageName: "Sign-in screen",
+      specPath: "__tests__/pages/sign-in/tab.test.ts",
+      specType: "default",
+      steps: [],
+      title: "shows the title",
+    },
+    {
+      describes: ["The sign-in form"],
+      pageName: "Sign-in screen",
+      specPath: "__tests__/pages/sign-in/tab.test.ts",
+      specType: "default",
+      steps: [],
+      title: "submits credentials",
+    },
+  ]
+
+  // Every grouping level present (domain → category → page), to exercise
+  // headings at the outermost level.
+  const nestedDomains = (): AppDomains =>
+    new Map([
+      ["auth", new Map([["pages", new Map([["Sign-in screen", pageCases()]])]])],
+    ])
+
+  // A flat page (no domain, no category) — the page is the outermost group.
+  const flatPage = (): AppDomains =>
+    new Map([["", new Map([["", new Map([["Sign-in screen", pageCases()]])]])]])
+
+  test("quote: false drops every <blockquote> but keeps balanced <details>", () => {
+    const md = renderApp("app", nestedDomains(), {
+      config: { render: { quote: false } },
+    })
+
+    assert.ok(!md.includes("<blockquote>"))
+    assert.ok(!md.includes("</blockquote>"))
+    const opens = (md.match(/<details>/g) ?? []).length
+    const closes = (md.match(/<\/details>/g) ?? []).length
+    assert.equal(opens, closes)
+    // The tests still render inside their describe box.
+    assert.ok(md.includes("- ☑️ shows the title"))
+  })
+
+  test("default keeps the <blockquote> wrappers", () => {
+    const md = renderApp("app", nestedDomains())
+    assert.ok(md.includes("<blockquote>"))
+  })
+
+  test("headingLevel turns the domain (outermost group) into a heading", () => {
+    const md = renderApp("app", nestedDomains(), {
+      config: { render: { headingLevel: 2 } },
+    })
+
+    // Domain becomes "## …" with the count on its own line; no <details> box.
+    assert.match(md, /^## auth$/m)
+    assert.match(md, /^2 tests$/m)
+    assert.ok(!md.includes("<summary><strong>auth</strong>"))
+    // Levels below it stay as <details> boxes.
+    assert.ok(md.includes("<summary><strong>pages</strong> (2 tests)</summary>"))
+  })
+
+  test("headingLevel turns the category into a heading when no domain wraps it", () => {
+    const domains: AppDomains = new Map([
+      ["", nestedDomains().get("auth") as Map<string, Map<string, TestCase[]>>],
+    ])
+    const md = renderApp("app", domains, {
+      config: { render: { headingLevel: 3 } },
+    })
+
+    assert.match(md, /^### pages$/m)
+    assert.ok(!md.includes("<summary><strong>pages</strong>"))
+  })
+
+  test("headingLevel turns the page into a heading when it is the outermost group", () => {
+    const md = renderApp("app", flatPage(), {
+      config: { render: { headingLevel: 2 } },
+    })
+
+    assert.match(md, /^## Sign-in screen$/m)
+    assert.match(md, /^2 tests$/m)
+    assert.ok(!md.includes("<summary><strong>Sign-in screen</strong>"))
+  })
+
+  test("headingLevel carries the shared count onto the page heading line", () => {
+    const domains: AppDomains = new Map([
+      [
+        "",
+        new Map([
+          [
+            "",
+            new Map([
+              [
+                "Page A",
+                [
+                  {
+                    describes: [],
+                    pageName: "Page A",
+                    specPath: "__tests__/a.test.ts",
+                    specType: "default",
+                    steps: [],
+                    title: "owned",
+                  },
+                  {
+                    describes: [],
+                    pageName: "Page A",
+                    pageRepeat: true,
+                    specPath: "__tests__/shared.test.ts",
+                    specType: "default",
+                    steps: [],
+                    title: "borrowed",
+                  },
+                ],
+              ],
+            ]),
+          ],
+        ]),
+      ],
+    ])
+
+    const md = renderApp("app", domains, {
+      config: { render: { headingLevel: 2 } },
+    })
+    assert.match(md, /^## Page A$/m)
+    assert.match(md, /^2 tests, 1 shared$/m)
+  })
+
+  test("specLink: none drops the 📄 file line", () => {
+    const md = renderApp("app", nestedDomains(), {
+      config: { render: { specLink: "none" } },
+    })
+
+    assert.ok(!md.includes("📄"))
+    // The tests are still there — only the link line is gone.
+    assert.ok(md.includes("- ☑️ shows the title"))
+  })
+
+  test("specLink: heading folds the link into the describe summary and drops the line", () => {
+    const md = renderApp("app", nestedDomains(), {
+      config: { render: { specLink: "heading" } },
+    })
+
+    assert.ok(!md.includes("📄"))
+    assert.ok(
+      md.includes(
+        '<summary><strong><a href="./__tests__/pages/sign-in/tab.test.ts">The browser tab of the sign-in page</a></strong> (1 tests)</summary>'
+      )
+    )
+  })
+
+  test("specLink: heading keeps a line for describe-less tests", () => {
+    const domains: AppDomains = new Map([
+      [
+        "",
+        new Map([
+          [
+            "",
+            new Map([
+              [
+                "Page",
+                [
+                  {
+                    describes: [],
+                    pageName: "Page",
+                    specPath: "__tests__/flat.test.ts",
+                    specType: "default",
+                    steps: [],
+                    title: "no describe here",
+                  },
+                ],
+              ],
+            ]),
+          ],
+        ]),
+      ],
+    ])
+
+    const md = renderApp("app", domains, {
+      config: { render: { specLink: "heading" } },
+    })
+    // With no describe to carry it, the link falls back to a line.
+    assert.ok(md.includes("📄 [`__tests__/flat.test.ts`]"))
+  })
+
+  test("combined quote:false + headingLevel + specLink:heading matches the issue shape", () => {
+    const md = renderApp("app", flatPage(), {
+      config: {
+        render: { headingLevel: 2, quote: false, specLink: "heading" },
+      },
+    })
+
+    assert.ok(!md.includes("<blockquote>"))
+    assert.ok(!md.includes("📄"))
+    assert.match(md, /^## Sign-in screen$/m)
+    assert.ok(
+      md.includes(
+        '<summary><strong><a href="./__tests__/pages/sign-in/tab.test.ts">The browser tab of the sign-in page</a></strong> (1 tests)</summary>'
+      )
+    )
   })
 })

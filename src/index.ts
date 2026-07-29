@@ -12,6 +12,7 @@ import { countDomains, generateAppMarkdown } from "./renderer.js"
 
 export type {
   CollectTestCasesConfig,
+  RenderOptions,
   ResolveApp,
   ResolveAppResult,
   ResolveCategory,
