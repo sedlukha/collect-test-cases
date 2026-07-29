@@ -14,6 +14,7 @@ import { applyConfigDefaults } from "../src/config.js"
 import { collectSpecFiles, groupSpecs } from "../src/grouper.js"
 import {
   type AppDomains,
+  countDomains,
   generateAppMarkdown,
   parseSpecFile,
 } from "../src/index.js"
@@ -1230,7 +1231,12 @@ describe("groupSpecs page names & discovery cases", () => {
 
   test("a repeated spec file is counted once above the page level", () => {
     const resolved = sharedSetup(["Page A", "Page B"])
-    const md = renderApp("app", groupSpecs(collectSpecFiles(resolved), resolved))
+    const domains = groupSpecs(collectSpecFiles(resolved), resolved)
+    const md = renderApp("app", domains)
+
+    // The CLI prints this number after it writes the file. It must match the
+    // total in the header, so a reader sees one answer, not two.
+    assert.equal(countDomains(domains), 3)
 
     // 3 tests exist. Page A lists all 3. Page B repeats 2 of them.
     assert.match(md, /\*\*3 tests\*\*/)

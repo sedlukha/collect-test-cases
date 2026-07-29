@@ -8,7 +8,7 @@ import {
   runDiscovery,
 } from "./discovery.js"
 import { collectSpecFiles, groupSpecs } from "./grouper.js"
-import { generateAppMarkdown } from "./renderer.js"
+import { countDomains, generateAppMarkdown } from "./renderer.js"
 
 export type {
   CollectTestCasesConfig,
@@ -41,7 +41,7 @@ export {
   runDiscovery,
 } from "./discovery.js"
 export type { AppDomains } from "./renderer.js"
-export { generateAppMarkdown } from "./renderer.js"
+export { countDomains, generateAppMarkdown } from "./renderer.js"
 
 // Emits the stdout diagnostic (and, in strict mode, throws) for files that
 // `include` matched but a discovery adapter did not report. A silent mismatch
@@ -123,12 +123,9 @@ export const run = async (): Promise<void> => {
   }
 
   const domains = groupSpecs(specFiles, config, casesByFile)
-  // Empty-fallback placeholders are warnings, not tests — exclude from the count.
-  const total = [...domains.values()]
-    .flatMap((c) => [...c.values()])
-    .flatMap((p) => [...p.values()])
-    .flat()
-    .filter((tc) => !tc.emptyFallback).length
+  // The renderer owns this count, so the log line always matches the number the
+  // document prints in its header.
+  const total = countDomains(domains)
 
   const markdown = generateAppMarkdown({
     config,

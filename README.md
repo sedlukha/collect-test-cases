@@ -436,6 +436,7 @@ The package also exports its building blocks for programmatic use:
 import {
   applyConfigDefaults,
   collectSpecFiles,
+  countDomains,
   groupSpecs,
   generateAppMarkdown,
   parseSpecFile,
@@ -447,6 +448,7 @@ import {
 | `applyConfigDefaults` | Fills in defaults and resolves paths; returns a `ResolvedConfig`.                          |
 | `collectSpecFiles`    | Runs the configured globs and returns absolute paths, deduped and sorted.                  |
 | `groupSpecs`          | Turns spec paths into `GroupedSpecs` (`domain → category → pageName → TestCase[]`).        |
+| `countDomains`        | Counts the tests in a `GroupedSpecs` slice. Skips a case repeated in a second page group.  |
 | `generateAppMarkdown` | Renders one app's Markdown from a `GroupedSpecs` slice.                                    |
 | `parseSpecFile`       | Pulls describes, test titles, and `test.step` names out of one spec file via regex + brace tracking. |
 | `run`                 | The one-shot pipeline the CLI invokes — useful for programmatic invocations from build scripts. |

@@ -540,6 +540,8 @@ const flattenDomains = (domains: AppDomains): TestCase[] =>
     .flatMap((pages) => [...pages.values()])
     .flat()
 
-// Counts real tests only — empty-fallback placeholders are not tests.
-const countDomains = (domains: AppDomains): number =>
+// Counts real tests only — empty-fallback placeholders are not tests, and a
+// repeated case belongs to a test already counted. The CLI prints this same
+// number, so the log line and the document header cannot drift apart.
+export const countDomains = (domains: AppDomains): number =>
   flattenDomains(domains).filter(isCountedCase).length
