@@ -81,21 +81,5 @@
     "typescript": "^5.5.0",
     "vitest": "^3.2.7"
   },
-  "packageManager": "pnpm@10.27.0",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "unrs-resolver"
-    ],
-    "supportedArchitectures": {
-      "os": [
-        "darwin",
-        "linux"
-      ],
-      "cpu": [
-        "arm64",
-        "x64"
-      ]
-    }
-  }
+  "packageManager": "pnpm@11.17.0"
 }
