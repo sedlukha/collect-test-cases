@@ -1099,6 +1099,53 @@ describe("collectSpecFiles", () => {
     assert.equal(cases.length, 2)
   })
 
+  test("playwright.exclude drops a listed file that holds no test", () => {
+    // A setup project runs a file that prepares a session. The runner lists it,
+    // the parser finds no test in it, and the document grows a group with 0
+    // tests. `exclude` keeps that file out.
+    const rel = "e2e/__checks__"
+    mkdirSync(join(tmpDir, rel), { recursive: true })
+    const spec = join(tmpDir, rel, "a.guest.spec.ts")
+    writeFileSync(spec, "test('one', () => {})")
+    const setup = join(tmpDir, rel, "session.setup.ts")
+    writeFileSync(setup, "setup('sign in', () => {})")
+
+    const listJson = {
+      config: { rootDir: tmpDir },
+      suites: [
+        { file: `${rel}/a.guest.spec.ts` },
+        { file: `${rel}/session.setup.ts` },
+      ],
+    }
+    const fakeCli = join(tmpDir, "fake-playwright.mjs")
+    writeFileSync(
+      fakeCli,
+      `#!/usr/bin/env node\nconsole.log(${JSON.stringify(JSON.stringify(listJson))})\n`
+    )
+    chmodSync(fakeCli, 0o755)
+
+    // Without `exclude` the runner's list wins and both files come through.
+    const kept = applyConfigDefaults({
+      playwright: { command: fakeCli },
+      rootDir: tmpDir,
+    })
+    assert.deepEqual(collectSpecFiles(kept), [spec, setup].sort())
+
+    // A string matches as a substring of the path.
+    const bySubstring = applyConfigDefaults({
+      playwright: { command: fakeCli, exclude: [".setup."] },
+      rootDir: tmpDir,
+    })
+    assert.deepEqual(collectSpecFiles(bySubstring), [spec])
+
+    // A RegExp is applied with `.test()`.
+    const byRegExp = applyConfigDefaults({
+      playwright: { command: fakeCli, exclude: [/\.setup\.ts$/] },
+      rootDir: tmpDir,
+    })
+    assert.deepEqual(collectSpecFiles(byRegExp), [spec])
+  })
+
   test("specType.pattern accepts RegExp", () => {
     mkdirSync(join(tmpDir, "src/__checks__"), { recursive: true })
     const authSpec = join(tmpDir, "src/__checks__/page.auth.spec.ts")
