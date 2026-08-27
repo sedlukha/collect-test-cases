@@ -140,6 +140,7 @@ The config is a plain ESM module exporting one object. All fields are optional u
 | `browserToOs`     | `Record<string, string>`          | `{ 'Desktop-Chrome': 'ubuntu', 'Desktop-Safari': 'macOS' }` | Playwright project name → display OS name. Drives screenshot gallery rows.                                                 |
 | `specTypes`       | `Record<string, SpecTypeDefinition>` | `{ default: { label: 'Tests', order: 0 } }` | Spec-type categories. See [Spec types](#spec-types).                                                                       |
 | `discovery`       | `{ fallback?, strict? }`          | `{ fallback: 'skip', strict: false }` | How adapter results reconcile with `include`. See [The adapter is the source of truth](#the-adapter-is-the-source-of-truth). |
+| `playwright`      | `{ command?, configPath?, exclude? }` | —                                | Ask Playwright which files its config runs, instead of globbing. See [Playwright file mode](#playwright-file-mode).         |
 | `layout`          | `MonorepoLayout`                  | —                                    | Declarative monorepo layout — see [Monorepo layout](#monorepo-layout).                                                     |
 | `resolveApp`      | `(absPath, root) => …`            | from `layout` if set, else include all | Escape-hatch override for "does this spec belong to this app?".                                                            |
 | `resolveDomain`   | `(absPath, root) => string`       | from `layout` if set, else `''`      | Returns the outermost grouping label.                                                                                      |
@@ -276,6 +277,29 @@ The plugin rewrites `t('key')`, `${t('key')}`, and parameterised forms like `t('
 Before:  await expect(page.getByText(t('button.submit'))).toBeVisible()
 After:   await expect(page.getByText(**en: "Submit" · ru: "Отправить"**)).toBeVisible()
 ```
+
+## Playwright file mode
+
+`playwright` asks Playwright which files its config runs, instead of walking the tree with globs. Use it when a config runs specs that live outside the repo — a shared spec shipped by a dependency and reached through the runner's `testDir`. A glob never sees that file. Playwright resolves `testDir`, so its list is exactly what the config runs.
+
+```js
+playwright: {
+  command: "e2e",        // default "playwright" — a wrapper binary or an absolute path
+  exclude: [".setup."],  // default none
+}
+```
+
+| Field        | Type                       | Default          | Description                                                                                                                       |
+| ------------ | -------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `command`    | `string`                   | `'playwright'`   | The executable to run. It is called as `<command> test --list --reporter=json`.                                                    |
+| `configPath` | `string`                   | —                | Passed through as `--config <path>`.                                                                                              |
+| `exclude`    | `(string \| RegExp)[]`     | `[]`             | Files dropped from the runner's list. A string matches as a substring of the path, a RegExp via `.test()` — the `specTypes.pattern` rule. |
+
+Only the file list changes. The cases still come from the text parser, so `test.step` names and the screenshot gallery survive.
+
+`scanDirs`, `include`, the top-level `exclude` and `resolveApp` do not apply here. The runner's list is already scoped to one config.
+
+**What `exclude` is for.** The runner lists every file its config runs, and some of them hold no test. A Playwright setup project is the usual case: its file prepares a session. The parser finds nothing in it, so the document grows a group that says 0 tests. Name the file in `exclude` and that group goes away.
 
 ## Runtime discovery
 

@@ -107,7 +107,17 @@ const collectViaPlaywright = (pw: PlaywrightDiscovery): string[] => {
     walk(suite)
   }
 
-  return [...byCanonical.values()].sort()
+  const files = [...byCanonical.values()].sort()
+  const exclude = pw.exclude ?? []
+
+  // The runner lists what its config runs, and that can include a file with no
+  // test in it — a setup project is the usual one. Without this the document
+  // grows a group that says 0 tests. See `PlaywrightDiscovery.exclude`.
+  return exclude.length === 0
+    ? files
+    : files.filter(
+        (file) => !exclude.some((pattern) => matchesPattern(file, pattern))
+      )
 }
 
 // Of two paths to the same file, pick the one nicer to show in the README:

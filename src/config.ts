@@ -111,6 +111,19 @@ export interface SpecTypeDefinition {
 export interface PlaywrightDiscovery {
   command?: string
   configPath?: string
+
+  // Files dropped from the runner's list. A string matches as a substring of
+  // the path; a RegExp is applied with `.test()` — the same rule as
+  // `specTypes.pattern`.
+  //
+  // The runner lists every file its config runs, and some of them hold no test
+  // at all. A Playwright setup project is the common case: its file prepares a
+  // session, so the parser finds nothing in it and the document shows a group
+  // with 0 tests. Name such a file here and it leaves the document.
+  //
+  // This is the only exclude that works in Playwright mode. The top-level
+  // `exclude` globs are for the file walk, which this mode replaces.
+  exclude?: (RegExp | string)[]
 }
 
 // Controls how discovery results reconcile with the `include` glob when a
