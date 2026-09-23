@@ -18,6 +18,7 @@ interface PlaywrightListSuite {
 }
 interface PlaywrightListJson {
   config?: { rootDir?: string }
+  errors?: { message?: string }[]
   suites?: PlaywrightListSuite[]
 }
 
@@ -60,6 +61,20 @@ const collectViaPlaywright = (pw: PlaywrightDiscovery): string[] => {
   if (!json) {
     throw new Error(
       `[collect-test-cases] '${pw.command ?? "playwright"} test --list' produced no parseable JSON.\n${result.stderr ?? result.error ?? ""}`
+    )
+  }
+
+  // One spec that fails to load makes Playwright list NO test at all. It still
+  // prints a valid document, with the reason in `errors` and exit code 1.
+  // Reading only `suites` turned that into an empty README and exit code 0,
+  // and a build cache then kept the empty README as a good result.
+  const errors = json.errors ?? []
+
+  if (errors.length > 0) {
+    const messages = errors.map((error) => error.message ?? "unknown error")
+
+    throw new Error(
+      `[collect-test-cases] '${pw.command ?? "playwright"} test --list' reported ${errors.length} error(s):\n${messages.join("\n")}`
     )
   }
 
