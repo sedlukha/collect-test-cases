@@ -1048,6 +1048,34 @@ describe("collectSpecFiles", () => {
     assert.deepEqual(found, [specA, specB].sort())
   })
 
+  test("playwright discovery throws when the list reports an error", () => {
+    // One spec that fails to load: Playwright lists no suite, puts the reason
+    // in `errors`, and exits 1. An empty result here would write an empty
+    // README and exit 0.
+    const listJson = {
+      config: { rootDir: tmpDir },
+      errors: [{ message: "Error: Cannot find module './missing'" }],
+      suites: [],
+    }
+    const fakeCli = join(tmpDir, "fake-playwright.mjs")
+    writeFileSync(
+      fakeCli,
+      `#!/usr/bin/env node\nconsole.log(${JSON.stringify(
+        JSON.stringify(listJson)
+      )})\nprocess.exit(1)\n`
+    )
+    chmodSync(fakeCli, 0o755)
+
+    const resolved = applyConfigDefaults({
+      playwright: { command: fakeCli },
+      rootDir: tmpDir,
+    })
+    assert.throws(
+      () => collectSpecFiles(resolved),
+      /reported 1 error\(s\):\nError: Cannot find module '\.\/missing'/
+    )
+  })
+
   test("playwright discovery dedups one spec listed under symlink + realpath", () => {
     // Mimic pnpm: the real spec lives in a store dir; a package's node_modules
     // is a symlink to it. Playwright lists the same file under BOTH paths.
